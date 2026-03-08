@@ -7,6 +7,10 @@ struct ClipboardItemRow: View {
 
     @State private var isHovered = false
     @State private var showsLargeImagePreview = false
+    @State private var showsHoverTextPreview = false
+    @State private var hoverPreviewTask: DispatchWorkItem?
+
+    @AppStorage("clipvault.previewDelayMs") private var previewDelayMs: Double = 300
 
     private var iconName: String {
         switch item.contentType {
@@ -97,7 +101,7 @@ struct ClipboardItemRow: View {
                 }
             }
 
-            if isHovered, let hoverTextPreview {
+            if showsHoverTextPreview, let hoverTextPreview {
                 Text(hoverTextPreview)
                     .font(.caption)
                     .foregroundStyle(.primary)
@@ -125,8 +129,10 @@ struct ClipboardItemRow: View {
                 isHovered = hovering
             }
 
-            if imageContent != nil {
-                showsLargeImagePreview = hovering
+            if hovering {
+                scheduleHoverPreview()
+            } else {
+                cancelHoverPreview()
             }
         }
         .popover(isPresented: $showsLargeImagePreview, arrowEdge: .trailing) {
@@ -159,6 +165,36 @@ struct ClipboardItemRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 0.6)
         )
+    }
+
+    private func scheduleHoverPreview() {
+        hoverPreviewTask?.cancel()
+
+        let task = DispatchWorkItem {
+            guard isHovered else { return }
+
+            withAnimation(.easeOut(duration: 0.16)) {
+                showsHoverTextPreview = hoverTextPreview != nil
+            }
+
+            if imageContent != nil {
+                showsLargeImagePreview = true
+            }
+        }
+
+        hoverPreviewTask = task
+        let secondsDelay = max(0, previewDelayMs) / 1000.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + secondsDelay, execute: task)
+    }
+
+    private func cancelHoverPreview() {
+        hoverPreviewTask?.cancel()
+        hoverPreviewTask = nil
+
+        withAnimation(.easeOut(duration: 0.12)) {
+            showsHoverTextPreview = false
+        }
+        showsLargeImagePreview = false
     }
 }
 

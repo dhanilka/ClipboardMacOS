@@ -87,12 +87,18 @@ final class ClipboardViewModel: ObservableObject {
     }
 
     private func addClipboardItem(_ item: ClipboardItem) {
-        // Skip adding an immediate duplicate at the top of the list.
-        if let first = items.first, first.duplicateKey == item.duplicateKey {
-            return
+        // If this content already exists, remove old copies and reinsert as newest at top.
+        let wasPinned = items.contains { existing in
+            existing.duplicateKey == item.duplicateKey && existing.isPinned
+        }
+        items.removeAll { existing in
+            existing.duplicateKey == item.duplicateKey
         }
 
-        items.insert(item, at: 0)
+        var newestItem = item
+        newestItem.isPinned = newestItem.isPinned || wasPinned
+
+        items.insert(newestItem, at: 0)
         enforceHistoryLimit()
     }
 

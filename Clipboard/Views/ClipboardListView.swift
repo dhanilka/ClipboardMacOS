@@ -6,6 +6,7 @@ struct ClipboardListView: View {
     let onItemSelected: () -> Void
 
     @FocusState private var isSearchFocused: Bool
+    @State private var showClearConfirmation = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -63,9 +64,12 @@ struct ClipboardListView: View {
             Divider()
 
             HStack {
-                Button("Clear History", role: .destructive) {
-                    viewModel.clearHistory()
+                Button(role: .destructive) {
+                    showClearConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
                 }
+                .help("Clear history")
                 .disabled(!viewModel.hasNonPinnedItems)
 
                 Spacer()
@@ -81,6 +85,18 @@ struct ClipboardListView: View {
         }
         .onReceive(viewModel.$searchFocusTrigger.dropFirst()) { _ in
             isSearchFocused = true
+        }
+        .confirmationDialog(
+            "Are you sure you want to clear history?",
+            isPresented: $showClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear", role: .destructive) {
+                viewModel.clearHistory()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes all non-pinned clipboard items.")
         }
     }
 

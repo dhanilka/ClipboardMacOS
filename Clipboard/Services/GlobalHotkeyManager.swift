@@ -20,25 +20,26 @@ final class GlobalHotkeyManager: ObservableObject {
     /// Invoked when the registered hotkey is pressed system-wide.
     var onHotKeyPressed: (() -> Void)?
 
-    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyRefs: [UInt32: EventHotKeyRef] = [:]
     private var hotKeyHandlerRef: EventHandlerRef?
     private var hotKeyHandlerUPP: EventHandlerUPP?
 
     private let keyCodeStoreKey = "clipvault.hotkey.keyCode"
     private let modifiersStoreKey = "clipvault.hotkey.modifiers"
     private let hotKeySignature: OSType = 0x4350564C // "CPVL"
+    private let mainHotKeyID: UInt32 = 1
 
     init() {
         shortcut = Self.loadShortcut()
         installHotKeyHandlerIfNeeded()
-        registerHotKey()
+        registerHotKeys()
     }
 
     func updateShortcut(_ newShortcut: HotkeyShortcut) {
         guard newShortcut != shortcut else { return }
         shortcut = newShortcut
         storeShortcut(newShortcut)
-        registerHotKey()
+        registerHotKeys()
     }
 
     func resetToDefault() {
@@ -136,10 +137,22 @@ final class GlobalHotkeyManager: ObservableObject {
         guard hotKeyHandlerRef == nil else { return }
 
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        hotKeyHandlerUPP = { _, _, userData in
-            guard let userData else { return noErr }
+        hotKeyHandlerUPP = { _, eventRef, userData in
+            guard let eventRef, let userData else { return noErr }
             let manager = Unmanaged<GlobalHotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-            manager.onHotKeyPressed?()
+            var hotKeyID = EventHotKeyID()
+            let status = GetEventParameter(
+                eventRef,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &hotKeyID
+            )
+
+            guard status == noErr else { return status }
+            manager.handleHotKeyPressed(id: hotKeyID.id)
             return noErr
         }
 
@@ -156,25 +169,44 @@ final class GlobalHotkeyManager: ObservableObject {
         }
     }
 
-    private func registerHotKey() {
-        unregisterHotKey()
+    private func handleHotKeyPressed(id: UInt32) {
+        if id == mainHotKeyID {
+            onHotKeyPressed?()
+        }
+    }
 
-        let hotKeyID = EventHotKeyID(signature: hotKeySignature, id: 1)
-        RegisterEventHotKey(
-            shortcut.keyCode,
-            shortcut.carbonModifiers,
+    private func registerHotKeys() {
+        unregisterHotKeys()
+
+        registerHotKey(
+            id: mainHotKeyID,
+            keyCode: shortcut.keyCode,
+            modifiers: shortcut.carbonModifiers
+        )
+    }
+
+    private func registerHotKey(id: UInt32, keyCode: UInt32, modifiers: UInt32) {
+        let hotKeyID = EventHotKeyID(signature: hotKeySignature, id: id)
+        var hotKeyRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            keyCode,
+            modifiers,
             hotKeyID,
             GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )
+
+        guard status == noErr, let hotKeyRef else { return }
+
+        hotKeyRefs[id] = hotKeyRef
     }
 
-    private func unregisterHotKey() {
-        if let hotKeyRef {
+    private func unregisterHotKeys() {
+        for hotKeyRef in hotKeyRefs.values {
             UnregisterEventHotKey(hotKeyRef)
         }
-        hotKeyRef = nil
+        hotKeyRefs.removeAll()
     }
 
     private static func loadShortcut() -> HotkeyShortcut {
