@@ -328,7 +328,7 @@ private struct SearchableEditableTextView: NSViewRepresentable {
 
         scrollView.documentView = textView
         context.coordinator.textView = textView
-        context.coordinator.applySearchHighlights(scrollToFirstMatch: true)
+        context.coordinator.applySearchSelection(force: true, scrollToMatch: true)
         return scrollView
     }
 
@@ -342,13 +342,16 @@ private struct SearchableEditableTextView: NSViewRepresentable {
             context.coordinator.isUpdatingProgrammatically = false
         }
 
-        context.coordinator.applySearchHighlights(scrollToFirstMatch: true)
+        context.coordinator.applySearchSelection(force: false, scrollToMatch: false)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: SearchableEditableTextView
         weak var textView: NSTextView?
         var isUpdatingProgrammatically = false
+        private var lastAppliedQuery: String = ""
+        private var lastAppliedText: String = ""
+        private let highlightColor = NSColor.systemYellow.withAlphaComponent(0.35)
 
         init(parent: SearchableEditableTextView) {
             self.parent = parent
@@ -357,60 +360,68 @@ private struct SearchableEditableTextView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView, !isUpdatingProgrammatically else { return }
             parent.text = textView.string
-            applySearchHighlights(scrollToFirstMatch: false)
+            applySearchSelection(force: true, scrollToMatch: false)
         }
 
-        func applySearchHighlights(scrollToFirstMatch: Bool) {
+        /// Keeps search behavior responsive without forcing selection on every render update.
+        func applySearchSelection(force: Bool, scrollToMatch: Bool) {
             guard let textView else { return }
+            guard let layoutManager = textView.layoutManager else { return }
 
             let fullText = textView.string
-            let selectedRange = textView.selectedRange()
             let nsText = fullText as NSString
-
-            let baseAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.preferredFont(forTextStyle: .body),
-                .foregroundColor: NSColor.labelColor
-            ]
-            let highlighted = NSMutableAttributedString(string: fullText, attributes: baseAttributes)
+            let fullRange = NSRange(location: 0, length: nsText.length)
 
             let query = parent.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-            var firstMatchRange: NSRange?
+            let queryChanged = query != lastAppliedQuery
+            let textChanged = fullText != lastAppliedText
+            guard force || queryChanged || textChanged else { return }
 
-            if !query.isEmpty {
-                var searchRange = NSRange(location: 0, length: nsText.length)
-                while searchRange.location < nsText.length {
-                    let found = nsText.range(
-                        of: query,
-                        options: [.caseInsensitive, .diacriticInsensitive],
-                        range: searchRange
-                    )
-                    if found.location == NSNotFound { break }
+            lastAppliedQuery = query
+            lastAppliedText = fullText
 
-                    if firstMatchRange == nil {
-                        firstMatchRange = found
-                    }
+            // Remove old temporary highlights before applying new ones.
+            layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: fullRange)
 
-                    highlighted.addAttribute(
-                        .backgroundColor,
-                        value: NSColor.systemYellow.withAlphaComponent(0.40),
-                        range: found
-                    )
+            guard !query.isEmpty else { return }
 
-                    let nextLocation = found.location + max(found.length, 1)
-                    searchRange = NSRange(location: nextLocation, length: nsText.length - nextLocation)
+            var firstMatch: NSRange?
+            var searchRange = fullRange
+
+            while searchRange.location < nsText.length {
+                let found = nsText.range(
+                    of: query,
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    range: searchRange
+                )
+
+                guard found.location != NSNotFound else { break }
+                if firstMatch == nil {
+                    firstMatch = found
                 }
+
+                layoutManager.addTemporaryAttribute(
+                    .backgroundColor,
+                    value: highlightColor,
+                    forCharacterRange: found
+                )
+
+                let nextLocation = found.location + max(found.length, 1)
+                searchRange = NSRange(location: nextLocation, length: nsText.length - nextLocation)
             }
 
-            isUpdatingProgrammatically = true
-            textView.textStorage?.setAttributedString(highlighted)
+            guard let firstMatch else { return }
 
-            let clampedLocation = min(selectedRange.location, nsText.length)
-            let clampedLength = min(selectedRange.length, max(0, nsText.length - clampedLocation))
-            textView.setSelectedRange(NSRange(location: clampedLocation, length: clampedLength))
-            isUpdatingProgrammatically = false
+            // Keep the previous "jump to first result" behavior when query changes.
+            if queryChanged {
+                isUpdatingProgrammatically = true
+                textView.setSelectedRange(firstMatch)
+                isUpdatingProgrammatically = false
 
-            if scrollToFirstMatch, let firstMatchRange {
-                textView.scrollRangeToVisible(firstMatchRange)
+                if scrollToMatch {
+                    textView.scrollRangeToVisible(firstMatch)
+                }
+                textView.showFindIndicator(for: firstMatch)
             }
         }
     }
