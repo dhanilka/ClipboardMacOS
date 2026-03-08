@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ClipboardItemRow: View {
     let item: ClipboardItem
@@ -106,6 +107,10 @@ struct ClipboardItemRow: View {
                             .frame(width: 64, height: 44)
                             .clipped()
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .help("Drag image to drop it into another app")
+                            .onDrag {
+                                imageItemProvider(for: image)
+                            }
                     }
                 }
             }
@@ -142,6 +147,9 @@ struct ClipboardItemRow: View {
                         .scaledToFit()
                         .frame(width: 560, height: 360)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .onDrag {
+                            imageItemProvider(for: imageContent)
+                        }
 
                     Text(item.timestamp.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
@@ -279,6 +287,74 @@ struct ClipboardItemRow: View {
             dismissPreviewTask?.cancel()
         } else if !isHovered {
             schedulePreviewDismiss()
+        }
+    }
+
+    private func imageItemProvider(for image: NSImage) -> NSItemProvider {
+        let provider = NSItemProvider()
+        let imagePNGData = pngData(from: image)
+        let tempFileURL = createTemporaryImageFileURL(pngData: imagePNGData, fallbackImage: image)
+
+        // Expose both PNG and TIFF so more target apps can accept the drag payload.
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.png.identifier, visibility: .all) { completion in
+            completion(imagePNGData, nil)
+            return nil
+        }
+
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.tiff.identifier, visibility: .all) { completion in
+            completion(image.tiffRepresentation, nil)
+            return nil
+        }
+
+        if let tempFileURL {
+            // Many web-based chat inputs accept file URL drops instead of raw image bytes.
+            provider.registerDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier, visibility: .all) { completion in
+                completion(tempFileURL.absoluteString.data(using: .utf8), nil)
+                return nil
+            }
+
+            provider.registerFileRepresentation(forTypeIdentifier: UTType.png.identifier, fileOptions: [], visibility: .all) { completion in
+                completion(tempFileURL, false, nil)
+                return nil
+            }
+        }
+
+        provider.suggestedName = "ClipVault Image"
+        return provider
+    }
+
+    private func pngData(from image: NSImage) -> Data? {
+        guard
+            let tiffData = image.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiffData)
+        else {
+            return nil
+        }
+        return bitmap.representation(using: .png, properties: [:])
+    }
+
+    private func createTemporaryImageFileURL(pngData: Data?, fallbackImage: NSImage) -> URL? {
+        let data: Data
+        let fileExtension: String
+
+        if let pngData {
+            data = pngData
+            fileExtension = "png"
+        } else if let tiffData = fallbackImage.tiffRepresentation {
+            data = tiffData
+            fileExtension = "tiff"
+        } else {
+            return nil
+        }
+
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("ClipVaultDrag", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+            let url = tempDirectory.appendingPathComponent("clipvault-\(UUID().uuidString).\(fileExtension)")
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
         }
     }
 
