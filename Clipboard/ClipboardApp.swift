@@ -1,17 +1,13 @@
-//
-//  ClipboardApp.swift
-//  Clipboard
-//
-//  Created by Dhanilka Dasanayake on 3/8/26.
-//
-
 import SwiftUI
 
 @main
-struct ClipboardApp: App {
+struct ClipVaultApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @ObservedObject private var hotkeyManager = AppEnvironment.shared.hotkeyManager
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        Settings {
+            SettingsView(hotkeyManager: hotkeyManager)
         }
     }
 }
