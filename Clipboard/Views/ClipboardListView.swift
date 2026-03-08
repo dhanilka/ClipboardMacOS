@@ -75,7 +75,7 @@ struct ClipboardListView: View {
                 Spacer()
 
                 SettingsLink {
-                    Text("Settings")
+                    Label("Settings", systemImage: "gearshape")
                 }
             }
         }

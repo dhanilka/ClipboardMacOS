@@ -7,10 +7,13 @@ struct ClipboardItemRow: View {
 
     @State private var isHovered = false
     @State private var showsLargeImagePreview = false
-    @State private var showsHoverTextPreview = false
+    @State private var showsLargeTextPreview = false
     @State private var hoverPreviewTask: DispatchWorkItem?
+    @State private var dismissPreviewTask: DispatchWorkItem?
+    @State private var isPreviewPopoverHovered = false
 
     @AppStorage("clipvault.previewDelayMs") private var previewDelayMs: Double = 300
+    private let previewDismissDelay: TimeInterval = 0.25
 
     private var iconName: String {
         switch item.contentType {
@@ -29,12 +32,7 @@ struct ClipboardItemRow: View {
 
     private var hoverTextPreview: String? {
         guard case .text(let text) = item.content else { return nil }
-
-        let words = text.split(whereSeparator: \.isWhitespace)
-        guard !words.isEmpty else { return nil }
-
-        let previewWords = words.prefix(50).map(String.init).joined(separator: " ")
-        return words.count > 50 ? "\(previewWords)..." : previewWords
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
     }
 
     private var imageContent: NSImage? {
@@ -100,39 +98,24 @@ struct ClipboardItemRow: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSelected)
 
-            if showsHoverTextPreview, let hoverTextPreview {
-                Text(hoverTextPreview)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color(nsColor: .textBackgroundColor))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.6)
-                    )
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onTapGesture(perform: onSelected)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.16)) {
                 isHovered = hovering
             }
 
             if hovering {
+                dismissPreviewTask?.cancel()
                 scheduleHoverPreview()
             } else {
-                cancelHoverPreview()
+                schedulePreviewDismiss()
             }
         }
         .popover(isPresented: $showsLargeImagePreview, arrowEdge: .trailing) {
@@ -155,6 +138,42 @@ struct ClipboardItemRow: View {
                 }
                 .padding(14)
                 .frame(width: 590)
+                .onHover { hovering in
+                    handlePopoverHoverChange(hovering)
+                }
+            }
+        }
+        .popover(isPresented: $showsLargeTextPreview, arrowEdge: .trailing) {
+            if let hoverTextPreview {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Text Preview")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    ScrollView(.vertical) {
+                        Text(hoverTextPreview)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 2)
+                    }
+                    .frame(width: 520, height: 300)
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .textBackgroundColor))
+                    )
+
+                    Text("Select any part to copy")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(14)
+                .frame(width: 560)
+                .onHover { hovering in
+                    handlePopoverHoverChange(hovering)
+                }
             }
         }
         .background(
@@ -169,12 +188,13 @@ struct ClipboardItemRow: View {
 
     private func scheduleHoverPreview() {
         hoverPreviewTask?.cancel()
+        dismissPreviewTask?.cancel()
 
         let task = DispatchWorkItem {
             guard isHovered else { return }
 
-            withAnimation(.easeOut(duration: 0.16)) {
-                showsHoverTextPreview = hoverTextPreview != nil
+            if hoverTextPreview != nil {
+                showsLargeTextPreview = true
             }
 
             if imageContent != nil {
@@ -190,11 +210,36 @@ struct ClipboardItemRow: View {
     private func cancelHoverPreview() {
         hoverPreviewTask?.cancel()
         hoverPreviewTask = nil
+        dismissPreviewTask?.cancel()
+        dismissPreviewTask = nil
 
-        withAnimation(.easeOut(duration: 0.12)) {
-            showsHoverTextPreview = false
-        }
+        showsLargeTextPreview = false
         showsLargeImagePreview = false
+        isPreviewPopoverHovered = false
+    }
+
+    private func schedulePreviewDismiss() {
+        dismissPreviewTask?.cancel()
+
+        let task = DispatchWorkItem {
+            guard !isHovered, !isPreviewPopoverHovered else {
+                return
+            }
+            cancelHoverPreview()
+        }
+
+        dismissPreviewTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + previewDismissDelay, execute: task)
+    }
+
+    private func handlePopoverHoverChange(_ hovering: Bool) {
+        isPreviewPopoverHovered = hovering
+
+        if hovering {
+            dismissPreviewTask?.cancel()
+        } else if !isHovered {
+            schedulePreviewDismiss()
+        }
     }
 }
 
