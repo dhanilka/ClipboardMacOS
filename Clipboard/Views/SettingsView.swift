@@ -1,12 +1,17 @@
 import AppKit
 import Carbon
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var hotkeyManager: GlobalHotkeyManager
+    @ObservedObject var viewModel: ClipboardViewModel
 
     @State private var isRecording = false
     @State private var keyMonitor: Any?
+    @State private var dataStatusMessage: String?
+    @State private var dataStatusIsError = false
+    @State private var isDataActionRunning = false
     @AppStorage("clipvault.previewDelayMs") private var previewDelayMs: Double = 300
 
     var body: some View {
@@ -64,6 +69,30 @@ struct SettingsView: View {
                     previewDelayMs = 300
                 }
             }
+
+            Section("Data") {
+                HStack(spacing: 10) {
+                    Button("Export Encrypted JSON") {
+                        exportHistory()
+                    }
+                    .disabled(isDataActionRunning)
+
+                    Button("Import Encrypted JSON") {
+                        importHistory()
+                    }
+                    .disabled(isDataActionRunning)
+                }
+
+                Text("History is encrypted. Only this app installation can decrypt exported files.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let dataStatusMessage {
+                    Text(dataStatusMessage)
+                        .font(.caption)
+                        .foregroundStyle(dataStatusIsError ? .red : .secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .frame(width: 420)
@@ -101,8 +130,71 @@ struct SettingsView: View {
             self.keyMonitor = nil
         }
     }
+
+    private func exportHistory() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType.json]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "ClipVault-History.encjson"
+        panel.title = "Export Clipboard History"
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        isDataActionRunning = true
+        Task {
+            do {
+                try await viewModel.exportHistory(to: url)
+                await MainActor.run {
+                    isDataActionRunning = false
+                    dataStatusIsError = false
+                    dataStatusMessage = "Exported successfully."
+                }
+            } catch {
+                await MainActor.run {
+                    isDataActionRunning = false
+                    dataStatusIsError = true
+                    dataStatusMessage = "Export failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func importHistory() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.title = "Import Clipboard History"
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        isDataActionRunning = true
+        Task {
+            do {
+                try await viewModel.importHistory(from: url)
+                await MainActor.run {
+                    isDataActionRunning = false
+                    dataStatusIsError = false
+                    dataStatusMessage = "Imported successfully."
+                }
+            } catch {
+                await MainActor.run {
+                    isDataActionRunning = false
+                    dataStatusIsError = true
+                    dataStatusMessage = "Import failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
 }
 
 #Preview {
-    SettingsView(hotkeyManager: GlobalHotkeyManager())
+    SettingsView(
+        hotkeyManager: GlobalHotkeyManager(),
+        viewModel: ClipboardViewModel()
+    )
 }
