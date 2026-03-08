@@ -134,6 +134,11 @@ struct ClipboardItemRow: View {
                 schedulePreviewDismiss()
             }
         }
+        .onDisappear {
+            // Rows are frequently recreated while history updates. Cancel pending work to avoid
+            // delayed state mutations hitting a row that is no longer in the hierarchy.
+            cancelHoverPreview()
+        }
         .popover(isPresented: $showsLargeImagePreview, arrowEdge: .trailing) {
             if let imageContent {
                 VStack(alignment: .leading, spacing: 10) {
@@ -292,8 +297,9 @@ struct ClipboardItemRow: View {
 
     private func imageItemProvider(for image: NSImage) -> NSItemProvider {
         let provider = NSItemProvider()
-        let imagePNGData = pngData(from: image)
-        let tempFileURL = createTemporaryImageFileURL(pngData: imagePNGData, fallbackImage: image)
+        let imageTIFFData = image.tiffRepresentation
+        let imagePNGData = pngData(fromTIFFData: imageTIFFData)
+        let tempFileURL = createTemporaryImageFileURL(pngData: imagePNGData, tiffData: imageTIFFData)
 
         // Expose both PNG and TIFF so more target apps can accept the drag payload.
         provider.registerDataRepresentation(forTypeIdentifier: UTType.png.identifier, visibility: .all) { completion in
@@ -302,16 +308,13 @@ struct ClipboardItemRow: View {
         }
 
         provider.registerDataRepresentation(forTypeIdentifier: UTType.tiff.identifier, visibility: .all) { completion in
-            completion(image.tiffRepresentation, nil)
+            completion(imageTIFFData, nil)
             return nil
         }
 
         if let tempFileURL {
             // Many web-based chat inputs accept file URL drops instead of raw image bytes.
-            provider.registerDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier, visibility: .all) { completion in
-                completion(tempFileURL.absoluteString.data(using: .utf8), nil)
-                return nil
-            }
+            provider.registerObject(tempFileURL as NSURL, visibility: .all)
 
             provider.registerFileRepresentation(forTypeIdentifier: UTType.png.identifier, fileOptions: [], visibility: .all) { completion in
                 completion(tempFileURL, false, nil)
@@ -323,9 +326,9 @@ struct ClipboardItemRow: View {
         return provider
     }
 
-    private func pngData(from image: NSImage) -> Data? {
+    private func pngData(fromTIFFData tiffData: Data?) -> Data? {
         guard
-            let tiffData = image.tiffRepresentation,
+            let tiffData,
             let bitmap = NSBitmapImageRep(data: tiffData)
         else {
             return nil
@@ -333,14 +336,14 @@ struct ClipboardItemRow: View {
         return bitmap.representation(using: .png, properties: [:])
     }
 
-    private func createTemporaryImageFileURL(pngData: Data?, fallbackImage: NSImage) -> URL? {
+    private func createTemporaryImageFileURL(pngData: Data?, tiffData: Data?) -> URL? {
         let data: Data
         let fileExtension: String
 
         if let pngData {
             data = pngData
             fileExtension = "png"
-        } else if let tiffData = fallbackImage.tiffRepresentation {
+        } else if let tiffData {
             data = tiffData
             fileExtension = "tiff"
         } else {
