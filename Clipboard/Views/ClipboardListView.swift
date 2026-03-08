@@ -32,6 +32,9 @@ struct ClipboardListView: View {
                                 ClipboardItemRow(
                                     item: item,
                                     onPinTapped: { viewModel.togglePin(for: item) },
+                                    onSaveEditedText: { editedText in
+                                        viewModel.saveEditedText(for: item, updatedText: editedText)
+                                    },
                                     onSelected: {
                                         viewModel.copyItemToClipboard(item)
                                         onItemSelected()
@@ -47,6 +50,9 @@ struct ClipboardListView: View {
                                 ClipboardItemRow(
                                     item: item,
                                     onPinTapped: { viewModel.togglePin(for: item) },
+                                    onSaveEditedText: { editedText in
+                                        viewModel.saveEditedText(for: item, updatedText: editedText)
+                                    },
                                     onSelected: {
                                         viewModel.copyItemToClipboard(item)
                                         onItemSelected()

@@ -100,6 +100,40 @@ final class ClipboardViewModel: ObservableObject {
         }
     }
 
+    func saveEditedText(for item: ClipboardItem, updatedText: String) {
+        guard case .text(let currentText) = item.content else {
+            return
+        }
+
+        let normalized = updatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty, normalized != currentText else {
+            return
+        }
+
+        let newDuplicateKey = "text:\(normalized)"
+        let duplicateWasPinned = items.contains { existing in
+            existing.id != item.id && existing.duplicateKey == newDuplicateKey && existing.isPinned
+        }
+
+        let editedItem = ClipboardItem(
+            id: item.id,
+            content: .text(normalized),
+            contentType: .text,
+            timestamp: Date(),
+            previewText: String(normalized.prefix(240)),
+            isPinned: item.isPinned || duplicateWasPinned,
+            duplicateKey: newDuplicateKey
+        )
+
+        var updated = items
+        updated.removeAll { existing in
+            existing.id == item.id || existing.duplicateKey == newDuplicateKey
+        }
+        updated.insert(editedItem, at: 0)
+        enforceHistoryLimit(on: &updated)
+        items = updated
+    }
+
     func exportHistory(to url: URL) async throws {
         let archive = makeArchive(from: items)
         try await storageService.exportArchive(archive, to: url)

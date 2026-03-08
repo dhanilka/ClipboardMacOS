@@ -4,6 +4,7 @@ import SwiftUI
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let onPinTapped: () -> Void
+    let onSaveEditedText: (String) -> Void
     let onSelected: () -> Void
 
     @State private var isHovered = false
@@ -36,6 +37,13 @@ struct ClipboardItemRow: View {
     private var textPreviewContent: String? {
         guard case .text(let text) = item.content else { return nil }
         return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+    }
+
+    private var hasUnsavedTextChanges: Bool {
+        guard let originalText = textPreviewContent else {
+            return false
+        }
+        return previewEditableText != originalText
     }
 
     private var imageContent: NSImage? {
@@ -149,9 +157,22 @@ struct ClipboardItemRow: View {
         .popover(isPresented: $showsLargeTextPreview, arrowEdge: .trailing) {
             if let textPreviewContent {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Text Preview")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+                    HStack {
+                        Text("Text Preview")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        if hasUnsavedTextChanges {
+                            Button {
+                                onSaveEditedText(previewEditableText)
+                            } label: {
+                                Image(systemName: "square.and.arrow.down")
+                            }
+                            .help("Save changes")
+                        }
+                    }
 
                     TextField("Search in preview", text: $previewSearchText)
                         .textFieldStyle(.roundedBorder)
@@ -167,9 +188,7 @@ struct ClipboardItemRow: View {
                             .fill(Color(nsColor: .textBackgroundColor))
                     )
                     .onAppear {
-                        if previewEditableText.isEmpty {
-                            previewEditableText = textPreviewContent
-                        }
+                        previewEditableText = textPreviewContent
                     }
 
                     if !previewSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -398,6 +417,11 @@ private struct SearchableEditableTextView: NSViewRepresentable {
 }
 
 #Preview {
-    ClipboardItemRow(item: .fromText("Example clipboard value\nwith second line")!, onPinTapped: {}, onSelected: {})
+    ClipboardItemRow(
+        item: .fromText("Example clipboard value\nwith second line")!,
+        onPinTapped: {},
+        onSaveEditedText: { _ in },
+        onSelected: {}
+    )
         .padding()
 }
