@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ClipboardItemRow: View {
@@ -12,6 +13,7 @@ struct ClipboardItemRow: View {
     @State private var dismissPreviewTask: DispatchWorkItem?
     @State private var isPreviewPopoverHovered = false
     @State private var previewSearchText: String = ""
+    @State private var previewEditableText: String = ""
 
     @AppStorage("clipvault.previewDelayMs") private var previewDelayMs: Double = 300
     private let previewDismissDelay: TimeInterval = 0.25
@@ -146,7 +148,6 @@ struct ClipboardItemRow: View {
         }
         .popover(isPresented: $showsLargeTextPreview, arrowEdge: .trailing) {
             if let textPreviewContent {
-                let lines = previewLines(from: textPreviewContent)
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Text Preview")
                         .font(.headline)
@@ -155,40 +156,33 @@ struct ClipboardItemRow: View {
                     TextField("Search in preview", text: $previewSearchText)
                         .textFieldStyle(.roundedBorder)
 
-                    ScrollViewReader { proxy in
-                        ScrollView(.vertical) {
-                            LazyVStack(alignment: .leading, spacing: 4) {
-                                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                                    Text(highlightedText(line, query: previewSearchText))
-                                        .font(.body)
-                                        .foregroundStyle(.primary)
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .id(index)
-                                }
-                            }
-                        }
-                        .onAppear {
-                            scrollToFirstMatch(in: lines, using: proxy)
-                        }
-                        .onChange(of: previewSearchText) { _, _ in
-                            scrollToFirstMatch(in: lines, using: proxy)
-                        }
-                    }
+                    SearchableEditableTextView(
+                        text: $previewEditableText,
+                        searchQuery: previewSearchText
+                    )
                     .frame(width: 520, height: 300)
                     .padding(10)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color(nsColor: .textBackgroundColor))
                     )
+                    .onAppear {
+                        if previewEditableText.isEmpty {
+                            previewEditableText = textPreviewContent
+                        }
+                    }
 
-                    if !previewSearchText.isEmpty, firstMatchingLineIndex(in: lines) == nil {
+                    if !previewSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       previewEditableText.range(
+                           of: previewSearchText,
+                           options: [.caseInsensitive, .diacriticInsensitive]
+                       ) == nil {
                         Text("No matches found")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
-                    Text("Select any part to copy")
+                    Text("You can edit, select multiple lines, and copy from here.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -218,6 +212,7 @@ struct ClipboardItemRow: View {
 
             if textPreviewContent != nil {
                 previewSearchText = ""
+                previewEditableText = textPreviewContent ?? ""
                 showsLargeTextPreview = true
             }
 
@@ -241,6 +236,7 @@ struct ClipboardItemRow: View {
         showsLargeImagePreview = false
         isPreviewPopoverHovered = false
         previewSearchText = ""
+        previewEditableText = ""
     }
 
     private func schedulePreviewDismiss() {
@@ -267,53 +263,137 @@ struct ClipboardItemRow: View {
         }
     }
 
-    private func previewLines(from content: String) -> [String] {
-        let normalized = content.replacingOccurrences(of: "\r\n", with: "\n")
-        let lines = normalized.components(separatedBy: "\n")
-        return lines.isEmpty ? [content] : lines
+}
+
+private struct SearchableEditableTextView: NSViewRepresentable {
+    @Binding var text: String
+    let searchQuery: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
     }
 
-    private func firstMatchingLineIndex(in lines: [String]) -> Int? {
-        let query = previewSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return nil }
-        return lines.firstIndex {
-            $0.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.allowsUndo = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.usesFindPanel = true
+        textView.enabledTextCheckingTypes = 0
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isGrammarCheckingEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticDataDetectionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticLinkDetectionEnabled = false
+        textView.drawsBackground = false
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.textContainerInset = NSSize(width: 4, height: 6)
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.delegate = context.coordinator
+        textView.string = text
+
+        scrollView.documentView = textView
+        context.coordinator.textView = textView
+        context.coordinator.applySearchHighlights(scrollToFirstMatch: true)
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let textView = context.coordinator.textView else { return }
+
+        if !context.coordinator.isUpdatingProgrammatically, textView.string != text {
+            context.coordinator.isUpdatingProgrammatically = true
+            textView.string = text
+            context.coordinator.isUpdatingProgrammatically = false
         }
+
+        context.coordinator.applySearchHighlights(scrollToFirstMatch: true)
     }
 
-    private func scrollToFirstMatch(in lines: [String], using proxy: ScrollViewProxy) {
-        guard let matchIndex = firstMatchingLineIndex(in: lines) else { return }
-        withAnimation(.easeInOut(duration: 0.18)) {
-            proxy.scrollTo(matchIndex, anchor: .center)
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: SearchableEditableTextView
+        weak var textView: NSTextView?
+        var isUpdatingProgrammatically = false
+
+        init(parent: SearchableEditableTextView) {
+            self.parent = parent
         }
-    }
 
-    private func highlightedText(_ line: String, query: String) -> AttributedString {
-        var attributed = AttributedString(line)
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return attributed }
+        func textDidChange(_ notification: Notification) {
+            guard let textView, !isUpdatingProgrammatically else { return }
+            parent.text = textView.string
+            applySearchHighlights(scrollToFirstMatch: false)
+        }
 
-        let source = line as NSString
-        var searchRange = NSRange(location: 0, length: source.length)
+        func applySearchHighlights(scrollToFirstMatch: Bool) {
+            guard let textView else { return }
 
-        while searchRange.location < source.length {
-            let found = source.range(
-                of: trimmedQuery,
-                options: [.caseInsensitive, .diacriticInsensitive],
-                range: searchRange
-            )
-            if found.location == NSNotFound { break }
+            let fullText = textView.string
+            let selectedRange = textView.selectedRange()
+            let nsText = fullText as NSString
 
-            if let range = Range(found, in: attributed) {
-                attributed[range].backgroundColor = .yellow.opacity(0.45)
-                attributed[range].foregroundColor = .primary
+            let baseAttributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.preferredFont(forTextStyle: .body),
+                .foregroundColor: NSColor.labelColor
+            ]
+            let highlighted = NSMutableAttributedString(string: fullText, attributes: baseAttributes)
+
+            let query = parent.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            var firstMatchRange: NSRange?
+
+            if !query.isEmpty {
+                var searchRange = NSRange(location: 0, length: nsText.length)
+                while searchRange.location < nsText.length {
+                    let found = nsText.range(
+                        of: query,
+                        options: [.caseInsensitive, .diacriticInsensitive],
+                        range: searchRange
+                    )
+                    if found.location == NSNotFound { break }
+
+                    if firstMatchRange == nil {
+                        firstMatchRange = found
+                    }
+
+                    highlighted.addAttribute(
+                        .backgroundColor,
+                        value: NSColor.systemYellow.withAlphaComponent(0.40),
+                        range: found
+                    )
+
+                    let nextLocation = found.location + max(found.length, 1)
+                    searchRange = NSRange(location: nextLocation, length: nsText.length - nextLocation)
+                }
             }
 
-            let nextLocation = found.location + max(found.length, 1)
-            searchRange = NSRange(location: nextLocation, length: source.length - nextLocation)
-        }
+            isUpdatingProgrammatically = true
+            textView.textStorage?.setAttributedString(highlighted)
 
-        return attributed
+            let clampedLocation = min(selectedRange.location, nsText.length)
+            let clampedLength = min(selectedRange.length, max(0, nsText.length - clampedLocation))
+            textView.setSelectedRange(NSRange(location: clampedLocation, length: clampedLength))
+            isUpdatingProgrammatically = false
+
+            if scrollToFirstMatch, let firstMatchRange {
+                textView.scrollRangeToVisible(firstMatchRange)
+            }
+        }
     }
 }
 
