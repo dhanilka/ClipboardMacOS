@@ -502,6 +502,7 @@ struct ClipboardListView: View {
                 Button("Copy") {
                     viewModel.copyExtractedTextToClipboard(ocrRecognizedText)
                     showCopyToast()
+                    dismissOCRSheet()
                 }
                 .disabled(isOCRRunning || ocrRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 

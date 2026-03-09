@@ -74,12 +74,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
     private var previousActiveApplication: NSRunningApplication?
     private var lastNonClipVaultApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
+    private var appDidResignActiveObserver: NSObjectProtocol?
 
     init(viewModel: ClipboardViewModel, hotkeyManager: GlobalHotkeyManager) {
         self.viewModel = viewModel
         self.hotkeyManager = hotkeyManager
         super.init()
         configureWorkspaceObserver()
+        configureAppLifecycleObserver()
         configureStatusItem()
         configurePopover()
         configureHotkey()
@@ -88,6 +90,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
     deinit {
         if let workspaceActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceActivationObserver)
+        }
+        if let appDidResignActiveObserver {
+            NotificationCenter.default.removeObserver(appDidResignActiveObserver)
         }
     }
 
@@ -285,6 +290,18 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
             Task { @MainActor [weak self] in
                 self?.lastNonClipVaultApplication = app
             }
+        }
+    }
+
+    private func configureAppLifecycleObserver() {
+        appDidResignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.popover.performClose(nil)
+            self.closeQuickPicker()
         }
     }
 

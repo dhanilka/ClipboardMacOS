@@ -80,17 +80,6 @@ struct ClipboardItemRow: View {
                         Spacer()
 
                         Button {
-                            onClearImageSelection()
-                            onCopyTapped()
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("Copy item")
-
-                        Button {
                             onPinTapped()
                         } label: {
                             Image(systemName: item.isPinned ? "pin.fill" : "pin")
@@ -100,27 +89,16 @@ struct ClipboardItemRow: View {
                         .foregroundStyle(item.isPinned ? .yellow : .secondary)
                         .help(item.isPinned ? "Unpin item" : "Pin item")
 
-                        if item.contentType == .image {
-                            Button {
-                                onExtractTextTapped()
-                            } label: {
-                                Image(systemName: "text.viewfinder")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("Extract text from image (OCR)")
-
-                            Button {
-                                onImageSelectionToggle()
-                            } label: {
-                                Image(systemName: isImageSelected ? "checkmark.square.fill" : "square")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(isImageSelected ? Color.accentColor : Color.secondary)
-                            .help(isImageSelected ? "Deselect image" : "Select image")
+                        Button {
+                            onClearImageSelection()
+                            onCopyTapped()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.caption)
                         }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Copy item")
                     }
 
                     switch item.content {
@@ -140,21 +118,46 @@ struct ClipboardItemRow: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     case .image(let image):
-                        Image(nsImage: image)
-                            .resizable()
-                            .interpolation(.medium)
-                            .scaledToFill()
-                            .frame(width: 64, height: 44)
-                            .clipped()
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            .help("Drag image from the row to drop into another app")
+                        HStack(spacing: 10) {
+                            Button {
+                                onImageSelectionToggle()
+                            } label: {
+                                Image(systemName: isImageSelected ? "checkmark.square.fill" : "square")
+                                    .font(.system(size: 16, weight: .regular))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(isImageSelected ? Color.accentColor : Color.secondary)
+                            .help(isImageSelected ? "Deselect image" : "Select image")
+                            .padding(.leading, -12)
+
+                            Image(nsImage: image)
+                                .resizable()
+                                .interpolation(.medium)
+                                .scaledToFill()
+                                .frame(width: 64, height: 44)
+                                .clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .help("Drag image from the row to drop into another app")
+
+                            Spacer(minLength: 16)
+
+                            Button("Extract Text") {
+                                onExtractTextTapped()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .help("Extract text from image (OCR)")
+                        }
                     }
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture {
-                handleRowTap()
-            }
+            .gesture(
+                TapGesture().onEnded {
+                    handleRowTap()
+                },
+                including: .gesture
+            )
 
         }
         .padding(.horizontal, 10)
@@ -316,16 +319,19 @@ struct ClipboardItemRow: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.white.opacity(0.45), lineWidth: 0.7)
         )
-        .overlay(alignment: .bottom) {
+        .overlay {
             if let imageContent {
-                // Make the whole lower row region draggable (blue area), not only the thumbnail.
-                MultiFileDragHandle(
-                    fileURLsProvider: { dragFileURLs(for: imageContent) },
-                    onHoverChanged: nil,
-                    onClick: { handleRowTap() }
-                )
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                // Full-row drag zone; only small control regions are excluded.
+                GeometryReader { proxy in
+                    MultiFileDragHandle(
+                        fileURLsProvider: { dragFileURLs(for: imageContent) },
+                        onHoverChanged: nil,
+                        onClick: { handleRowTap() },
+                        excludedLeadingWidth: 40,
+                        excludedTrailingWidth: 132
+                    )
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                }
             }
         }
     }
@@ -641,12 +647,30 @@ private struct MultiFileDragHandle: NSViewRepresentable {
     let fileURLsProvider: () -> [URL]
     let onHoverChanged: ((Bool) -> Void)?
     let onClick: (() -> Void)?
+    let excludedLeadingWidth: CGFloat
+    let excludedTrailingWidth: CGFloat
+
+    init(
+        fileURLsProvider: @escaping () -> [URL],
+        onHoverChanged: ((Bool) -> Void)?,
+        onClick: (() -> Void)?,
+        excludedLeadingWidth: CGFloat = 0,
+        excludedTrailingWidth: CGFloat = 0
+    ) {
+        self.fileURLsProvider = fileURLsProvider
+        self.onHoverChanged = onHoverChanged
+        self.onClick = onClick
+        self.excludedLeadingWidth = excludedLeadingWidth
+        self.excludedTrailingWidth = excludedTrailingWidth
+    }
 
     func makeNSView(context: Context) -> DragHandleView {
         let view = DragHandleView()
         view.fileURLsProvider = fileURLsProvider
         view.onHoverChanged = onHoverChanged
         view.onClick = onClick
+        view.excludedLeadingWidth = excludedLeadingWidth
+        view.excludedTrailingWidth = excludedTrailingWidth
         return view
     }
 
@@ -654,6 +678,8 @@ private struct MultiFileDragHandle: NSViewRepresentable {
         nsView.fileURLsProvider = fileURLsProvider
         nsView.onHoverChanged = onHoverChanged
         nsView.onClick = onClick
+        nsView.excludedLeadingWidth = excludedLeadingWidth
+        nsView.excludedTrailingWidth = excludedTrailingWidth
     }
 }
 
@@ -661,6 +687,8 @@ private final class DragHandleView: NSView, NSDraggingSource {
     var fileURLsProvider: (() -> [URL])?
     var onHoverChanged: ((Bool) -> Void)?
     var onClick: (() -> Void)?
+    var excludedLeadingWidth: CGFloat = 0
+    var excludedTrailingWidth: CGFloat = 0
 
     private var hasStartedDrag = false
     private var mouseDownPoint: NSPoint = .zero
@@ -677,6 +705,12 @@ private final class DragHandleView: NSView, NSDraggingSource {
         super.init(coder: coder)
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Allow underlying controls (checkbox/buttons) to receive clicks.
+        guard !isPointInExcludedRegion(point) else { return nil }
+        return super.hitTest(point)
     }
 
     override func updateTrackingAreas() {
@@ -721,14 +755,23 @@ private final class DragHandleView: NSView, NSDraggingSource {
     }
 
     override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard !isPointInExcludedRegion(point) else {
+            super.mouseDown(with: event)
+            return
+        }
+
         hasStartedDrag = false
-        mouseDownPoint = convert(event.locationInWindow, from: nil)
+        mouseDownPoint = point
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let fileURLsProvider else { return }
 
         let currentPoint = convert(event.locationInWindow, from: nil)
+        // Only the drag start point must be in a draggable zone.
+        // Once drag starts, users can move across control regions naturally.
+        guard !isPointInExcludedRegion(mouseDownPoint) else { return }
         let deltaX = currentPoint.x - mouseDownPoint.x
         let deltaY = currentPoint.y - mouseDownPoint.y
         let distance = sqrt((deltaX * deltaX) + (deltaY * deltaY))
@@ -775,6 +818,31 @@ private final class DragHandleView: NSView, NSDraggingSource {
 
     func ignoreModifierKeys(for session: NSDraggingSession) -> Bool {
         true
+    }
+
+    private func isPointInExcludedRegion(_ point: NSPoint) -> Bool {
+        let leadingRegion = NSRect(
+            x: bounds.minX,
+            y: bounds.minY,
+            width: max(0, excludedLeadingWidth),
+            height: bounds.height
+        )
+        if leadingRegion.contains(point) {
+            return true
+        }
+
+        let trailingWidth = max(0, excludedTrailingWidth)
+        let trailingRegion = NSRect(
+            x: bounds.maxX - trailingWidth,
+            y: bounds.minY,
+            width: trailingWidth,
+            height: bounds.height
+        )
+        if trailingRegion.contains(point) {
+            return true
+        }
+
+        return false
     }
 }
 
