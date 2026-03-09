@@ -5,9 +5,45 @@ import SwiftUI
 import CryptoKit
 import UniformTypeIdentifiers
 
+enum ClipboardContentFilter: String, CaseIterable, Identifiable {
+    case all
+    case text
+    case image
+    case url
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .all:
+            return "All"
+        case .text:
+            return "Text"
+        case .image:
+            return "Image"
+        case .url:
+            return "URL"
+        }
+    }
+
+    func matches(_ type: ClipboardContentType) -> Bool {
+        switch self {
+        case .all:
+            return true
+        case .text:
+            return type == .text
+        case .image:
+            return type == .image
+        case .url:
+            return type == .url
+        }
+    }
+}
+
 @MainActor
 final class ClipboardViewModel: ObservableObject {
     @Published var searchText: String = ""
+    @Published var selectedContentFilter: ClipboardContentFilter = .all
     @Published private(set) var searchFocusTrigger: UUID = UUID()
     @Published private(set) var items: [ClipboardItem] = [] {
         didSet { pruneSelectedImageIDs() }
@@ -56,11 +92,12 @@ final class ClipboardViewModel: ObservableObject {
     }
 
     private func filtered(items: [ClipboardItem]) -> [ClipboardItem] {
+        let typeFiltered = items.filter { selectedContentFilter.matches($0.contentType) }
         guard !searchText.isEmpty else {
-            return items
+            return typeFiltered
         }
 
-        return items.filter { $0.searchableText.localizedCaseInsensitiveContains(searchText) }
+        return typeFiltered.filter { $0.searchableText.localizedCaseInsensitiveContains(searchText) }
     }
 
     func startMonitoring() {

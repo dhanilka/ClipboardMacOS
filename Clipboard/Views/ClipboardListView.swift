@@ -7,12 +7,54 @@ struct ClipboardListView: View {
 
     @FocusState private var isSearchFocused: Bool
     @State private var showClearConfirmation = false
+    @State private var isSearchExpanded = false
 
     var body: some View {
         VStack(spacing: 12) {
-            TextField("Search clipboard history", text: $viewModel.searchText)
-                .textFieldStyle(.roundedBorder)
-                .focused($isSearchFocused)
+            HStack(spacing: 8) {
+                Button {
+                    toggleSearchBar()
+                } label: {
+                    Image(systemName: isSearchExpanded ? "xmark.circle.fill" : "magnifyingglass")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .padding(6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(nsColor: .controlBackgroundColor))
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(isSearchExpanded ? "Hide search" : "Show search")
+
+                if isSearchExpanded {
+                    TextField("Search clipboard history", text: $viewModel.searchText)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($isSearchFocused)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+
+                Spacer(minLength: 4)
+
+                Menu {
+                    ForEach(ClipboardContentFilter.allCases) { filter in
+                        Button {
+                            viewModel.selectedContentFilter = filter
+                        } label: {
+                            if viewModel.selectedContentFilter == filter {
+                                Label(filter.title, systemImage: "checkmark")
+                            } else {
+                                Text(filter.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(viewModel.selectedContentFilter.title, systemImage: "line.3.horizontal.decrease.circle")
+                }
+                .menuStyle(.borderlessButton)
+            }
+            .animation(.snappy(duration: 0.18), value: isSearchExpanded)
 
             ScrollView {
                 if !viewModel.hasVisibleItems {
@@ -79,6 +121,7 @@ struct ClipboardListView: View {
                 }
             }
             .animation(.snappy(duration: 0.2), value: viewModel.searchText)
+            .animation(.snappy(duration: 0.2), value: viewModel.selectedContentFilter)
             .animation(.snappy(duration: 0.2), value: viewModel.items.count)
 
             Divider()
@@ -100,11 +143,15 @@ struct ClipboardListView: View {
             }
         }
         .padding(14)
-        .onAppear {
-            isSearchFocused = true
-        }
         .onReceive(viewModel.$searchFocusTrigger.dropFirst()) { _ in
-            isSearchFocused = true
+            if !isSearchExpanded {
+                withAnimation(.snappy(duration: 0.18)) {
+                    isSearchExpanded = true
+                }
+            }
+            DispatchQueue.main.async {
+                isSearchFocused = true
+            }
         }
         .confirmationDialog(
             "Are you sure you want to clear history?",
@@ -117,6 +164,21 @@ struct ClipboardListView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes all non-pinned clipboard items.")
+        }
+    }
+
+    private func toggleSearchBar() {
+        withAnimation(.snappy(duration: 0.18)) {
+            isSearchExpanded.toggle()
+        }
+
+        if isSearchExpanded {
+            DispatchQueue.main.async {
+                isSearchFocused = true
+            }
+        } else {
+            isSearchFocused = false
+            viewModel.searchText = ""
         }
     }
 
