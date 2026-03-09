@@ -8,6 +8,50 @@ private final class FloatingPickerPanel: NSPanel {
     override var canBecomeMain: Bool { true }
 }
 
+private final class QuickPickerContainerController: NSViewController {
+    private let hostingController: NSHostingController<MenuBarView>
+
+    init(rootView: MenuBarView) {
+        self.hostingController = NSHostingController(rootView: rootView)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        let effectView = NSVisualEffectView()
+        effectView.material = .popover
+        effectView.blendingMode = .withinWindow
+        effectView.state = .active
+        effectView.wantsLayer = true
+        effectView.layer?.cornerRadius = 18
+        effectView.layer?.masksToBounds = true
+        effectView.layer?.backgroundColor = NSColor.clear.cgColor
+        view = effectView
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        addChild(hostingController)
+
+        let hostedView = hostingController.view
+        hostedView.translatesAutoresizingMaskIntoConstraints = false
+        hostedView.wantsLayer = true
+        hostedView.layer?.backgroundColor = NSColor.clear.cgColor
+
+        view.addSubview(hostedView)
+        NSLayoutConstraint.activate([
+            hostedView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostedView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hostedView.topAnchor.constraint(equalTo: view.topAnchor),
+            hostedView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+}
+
 @MainActor
 final class AppEnvironment {
     static let shared = AppEnvironment()
@@ -149,14 +193,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         panel.level = .floating
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.isMovableByWindowBackground = false
-        panel.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.98)
+        panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.hidesOnDeactivate = true
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = false
         panel.delegate = self
-        panel.contentViewController = NSHostingController(
+        panel.contentViewController = QuickPickerContainerController(
             rootView: MenuBarView(
                 viewModel: viewModel,
                 onClosePopover: { [weak self] in
@@ -165,10 +209,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
                 presentationStyle: .quickPicker
             )
         )
-
-        panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.cornerRadius = 14
-        panel.contentView?.layer?.masksToBounds = true
 
         quickPickerPanel = panel
         return panel
