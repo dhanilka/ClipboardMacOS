@@ -1,0 +1,12 @@
+{
+  "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/Clipboard/Models/ClipboardItem.swift" : {
+    "abi-baseline-json" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/Clipboard.build/Release/Clipboard.build/Objects-normal/arm64/ClipVault.abi.json",
+    "const-values" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/Clipboard.build/Release/Clipboard.build/Objects-normal/arm64/Clipboard-primary.swiftconstvalues",
+    "dependencies" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/Clipboard.build/Release/Clipboard.build/Objects-normal/arm64/Clipboard-primary.d",
+    "diagnostics" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/Clipboard.build/Release/Clipboard.build/Objects-normal/arm64/Clipboard-primary.dia",
+    "objc-header" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/Clipboard.build/Release/Clipboard.build/Objects-normal/arm64/ClipVault-Swift.h",
+    "swiftdoc" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/Clipboard.build/Release/Clipboard.build/Objects-normal/arm64/ClipVault.swiftdoc",
+    "swiftmodule" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/Clipboard.build/Release/Clipboard.build/Objects-normal/arm64/ClipVault.swiftmodule",
+    "swiftsourceinfo" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/Clipboard.build/Release/Clipboard.build/Objects-normal/arm64/ClipVault.swiftsourceinfo"
+  }
+}

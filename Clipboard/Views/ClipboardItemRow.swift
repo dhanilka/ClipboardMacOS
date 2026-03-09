@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -16,8 +17,8 @@ struct ClipboardItemRow: View {
     @State private var isPreviewPopoverHovered = false
     @State private var previewSearchText: String = ""
     @State private var previewEditableText: String = ""
-
-    @AppStorage("clipvault.previewDelayMs") private var previewDelayMs: Double = 300
+    @ObservedObject private var shiftKeyMonitor = ShiftKeyMonitor.shared
+    @State private var lastObservedShiftState = false
     private let previewDismissDelay: TimeInterval = 0.25
 
     private var iconName: String {
@@ -129,9 +130,23 @@ struct ClipboardItemRow: View {
 
             if hovering {
                 dismissPreviewTask?.cancel()
-                scheduleHoverPreview()
+                if shiftKeyMonitor.isShiftPressed && !isAnyPreviewVisible {
+                    showPreviewForHoveredItem()
+                }
             } else {
                 schedulePreviewDismiss()
+            }
+        }
+        .onAppear {
+            lastObservedShiftState = shiftKeyMonitor.isShiftPressed
+        }
+        .onReceive(shiftKeyMonitor.$isShiftPressed) { isPressed in
+            let wasPressed = lastObservedShiftState
+            lastObservedShiftState = isPressed
+
+            guard isHovered else { return }
+            if isPressed && !wasPressed {
+                togglePreviewForHoveredItem()
             }
         }
         .onDisappear {
@@ -235,27 +250,31 @@ struct ClipboardItemRow: View {
         )
     }
 
-    private func scheduleHoverPreview() {
-        hoverPreviewTask?.cancel()
+    private var isAnyPreviewVisible: Bool {
+        showsLargeTextPreview || showsLargeImagePreview
+    }
+
+    private func togglePreviewForHoveredItem() {
+        if isAnyPreviewVisible {
+            cancelHoverPreview()
+        } else {
+            showPreviewForHoveredItem()
+        }
+    }
+
+    private func showPreviewForHoveredItem() {
+        guard isHovered else { return }
         dismissPreviewTask?.cancel()
 
-        let task = DispatchWorkItem {
-            guard isHovered else { return }
-
-            if textPreviewContent != nil {
-                previewSearchText = ""
-                previewEditableText = textPreviewContent ?? ""
-                showsLargeTextPreview = true
-            }
-
-            if imageContent != nil {
-                showsLargeImagePreview = true
-            }
+        if textPreviewContent != nil {
+            previewSearchText = ""
+            previewEditableText = textPreviewContent ?? ""
+            showsLargeTextPreview = true
         }
 
-        hoverPreviewTask = task
-        let secondsDelay = max(0, previewDelayMs) / 1000.0
-        DispatchQueue.main.asyncAfter(deadline: .now() + secondsDelay, execute: task)
+        if imageContent != nil {
+            showsLargeImagePreview = true
+        }
     }
 
     private func cancelHoverPreview() {
@@ -361,6 +380,45 @@ struct ClipboardItemRow: View {
         }
     }
 
+}
+
+@MainActor
+private final class ShiftKeyMonitor: ObservableObject {
+    static let shared = ShiftKeyMonitor()
+
+    @Published private(set) var isShiftPressed: Bool = false
+
+    private var localMonitor: Any?
+    private var globalMonitor: Any?
+
+    private init() {
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.updateShiftState(from: event)
+            return event
+        }
+
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            Task { @MainActor [weak self] in
+                self?.updateShiftState(from: event)
+            }
+        }
+    }
+
+    deinit {
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
+        }
+        if let globalMonitor {
+            NSEvent.removeMonitor(globalMonitor)
+        }
+    }
+
+    private func updateShiftState(from event: NSEvent) {
+        let pressed = event.modifierFlags.contains(.shift)
+        if pressed != isShiftPressed {
+            isShiftPressed = pressed
+        }
+    }
 }
 
 private struct SearchableEditableTextView: NSViewRepresentable {

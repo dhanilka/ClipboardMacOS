@@ -1,0 +1,80 @@
+{
+  "source": "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/Clipboard/Views/ClipboardListView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Are you sure you want to clear history?",
+        "location": {
+          "startingColumn": 13,
+          "startingLine": 96
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search clipboard history",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 13
+        }
+      },
+      {
+        "comment": "",
+        "key": "Copied items will appear here.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 22
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Clipboard History",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 20
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear history",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "This removes all non-pinned clipboard items.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 105
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,64 @@
+{
+  "buildCommand" : {
+    "command" : "build",
+    "skipDependencies" : false,
+    "style" : "buildOnly"
+  },
+  "configuredTargets" : [
+    {
+      "guid" : "38ba0a02b0ff81b09bee4d56f763a39811ced16ee24915b99e402e914d4c1c6f"
+    }
+  ],
+  "containerPath" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/Clipboard.xcodeproj",
+  "continueBuildingAfterErrors" : false,
+  "dependencyScope" : "workspace",
+  "enableIndexBuildArena" : false,
+  "hideShellScriptEnvironment" : false,
+  "parameters" : {
+    "action" : "build",
+    "activeArchitecture" : "arm64",
+    "activeRunDestination" : {
+      "disableOnlyActiveArch" : false,
+      "platform" : "macosx",
+      "sdk" : "macosx26.2",
+      "sdkVariant" : "macos",
+      "supportedArchitectures" : [
+        "arm64e",
+        "arm64",
+        "x86_64"
+      ],
+      "targetArchitecture" : "arm64"
+    },
+    "arenaInfo" : {
+      "buildIntermediatesPath" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex",
+      "buildProductsPath" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Products",
+      "derivedDataPath" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build",
+      "indexDataStoreFolderPath" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Index.noindex/DataStore",
+      "indexEnableDataStore" : true,
+      "indexPCHPath" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Index.noindex/PrecompiledHeaders",
+      "pchPath" : "/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Intermediates.noindex/PrecompiledHeaders"
+    },
+    "configurationName" : "Release",
+    "overrides" : {
+      "commandLine" : {
+        "table" : {
+
+        }
+      },
+      "synthesized" : {
+        "table" : {
+          "ACTION" : "build",
+          "ENABLE_PREVIEWS" : "NO",
+          "ENABLE_XOJIT_PREVIEWS" : "YES",
+          "ONLY_ACTIVE_ARCH" : "YES"
+        }
+      }
+    }
+  },
+  "schemeCommand" : "launch",
+  "showNonLoggedProgress" : true,
+  "useDryRun" : false,
+  "useImplicitDependencies" : true,
+  "useLegacyBuildLocations" : false,
+  "useParallelTargets" : true
+}

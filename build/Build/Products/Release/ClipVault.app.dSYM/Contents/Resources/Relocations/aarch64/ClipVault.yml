@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/dhanilka/Desktop/Swift/Clipboard/Clipboard/build/Build/Products/Release/ClipVault.app/Contents/MacOS/ClipVault'
+relocations:     []
+...
