@@ -62,21 +62,11 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                ForEach(Array(viewModel.captureBlacklist.indices), id: \.self) { index in
-                    HStack(spacing: 8) {
-                        TextField(
-                            "App name or bundle ID",
-                            text: Binding(
-                                get: {
-                                    guard viewModel.captureBlacklist.indices.contains(index) else { return "" }
-                                    return viewModel.captureBlacklist[index]
-                                },
-                                set: { newValue in
-                                    viewModel.updateCaptureBlacklistEntry(at: index, with: newValue)
-                                }
-                            )
-                        )
-
+                ForEach(Array(viewModel.captureBlacklist.enumerated()), id: \.offset) { index, appName in
+                    HStack {
+                        Text(appName)
+                            .lineLimit(1)
+                        Spacer()
                         Button {
                             viewModel.removeCaptureBlacklistEntry(at: index)
                         } label: {
@@ -89,9 +79,9 @@ struct SettingsView: View {
                 }
 
                 Button {
-                    viewModel.addCaptureBlacklistEntry()
+                    chooseBlacklistApps()
                 } label: {
-                    Label("Add App", systemImage: "plus")
+                    Label("Choose Apps…", systemImage: "plus")
                 }
             }
 
@@ -215,6 +205,45 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func chooseBlacklistApps() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Apps to Ignore"
+        panel.message = "Select one or more apps from Applications."
+        panel.prompt = "Add"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+
+        guard panel.runModal() == .OK else {
+            return
+        }
+
+        let selectedApps = panel.urls.compactMap(appDisplayName(from:))
+        viewModel.addCaptureBlacklistEntries(selectedApps)
+    }
+
+    private func appDisplayName(from appURL: URL) -> String? {
+        guard appURL.pathExtension.lowercased() == "app" else {
+            return nil
+        }
+
+        if let bundle = Bundle(url: appURL) {
+            if let displayName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+               !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return displayName
+            }
+            if let bundleName = bundle.object(forInfoDictionaryKey: "CFBundleName") as? String,
+               !bundleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return bundleName
+            }
+        }
+
+        let fallback = appURL.deletingPathExtension().lastPathComponent
+        return fallback.isEmpty ? nil : fallback
     }
 }
 

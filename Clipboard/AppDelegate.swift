@@ -135,6 +135,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         popover.performClose(nil)
 
         let panel = makeQuickPickerPanelIfNeeded()
+        applyThemeAppearance(to: panel)
         positionQuickPicker(panel)
 
         NSApp.activate(ignoringOtherApps: true)
@@ -212,6 +213,20 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
 
         quickPickerPanel = panel
         return panel
+    }
+
+    private func applyThemeAppearance(to panel: NSPanel) {
+        let themeRawValue = UserDefaults.standard.string(forKey: appThemeStorageKey) ?? AppTheme.dark.rawValue
+        let theme = AppTheme(rawValue: themeRawValue) ?? .dark
+
+        switch theme {
+        case .system:
+            panel.appearance = nil
+        case .light:
+            panel.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            panel.appearance = NSAppearance(named: .darkAqua)
+        }
     }
 
     private func positionQuickPicker(_ panel: NSPanel) {

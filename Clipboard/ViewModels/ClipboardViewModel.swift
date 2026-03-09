@@ -175,15 +175,23 @@ final class ClipboardViewModel: ObservableObject {
         selectedImageIDs.removeAll()
     }
 
-    func addCaptureBlacklistEntry() {
-        captureBlacklist.append("")
-    }
+    func addCaptureBlacklistEntries(_ entries: [String]) {
+        var existing = Set(
+            captureBlacklist.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        )
+        var additions: [String] = []
 
-    func updateCaptureBlacklistEntry(at index: Int, with value: String) {
-        guard captureBlacklist.indices.contains(index) else {
-            return
+        for entry in entries {
+            let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let key = trimmed.lowercased()
+            guard !existing.contains(key) else { continue }
+            existing.insert(key)
+            additions.append(trimmed)
         }
-        captureBlacklist[index] = value
+
+        guard !additions.isEmpty else { return }
+        captureBlacklist.append(contentsOf: additions)
     }
 
     func removeCaptureBlacklistEntry(at index: Int) {
