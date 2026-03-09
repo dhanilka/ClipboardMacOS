@@ -42,8 +42,21 @@ enum ClipboardContentFilter: String, CaseIterable, Identifiable {
 
 @MainActor
 final class ClipboardViewModel: ObservableObject {
+    private static let captureBlacklistStorageKey = "clipvault.capture.blacklist"
+    private static let defaultCaptureBlacklist = [
+        "1Password",
+        "Bitwarden",
+        "Keychain Access",
+        "Terminal"
+    ]
+
     @Published var searchText: String = ""
     @Published var selectedContentFilter: ClipboardContentFilter = .all
+    @Published var captureBlacklist: [String] = [] {
+        didSet {
+            persistAndApplyCaptureBlacklist()
+        }
+    }
     @Published private(set) var searchFocusTrigger: UUID = UUID()
     @Published private(set) var items: [ClipboardItem] = [] {
         didSet { pruneSelectedImageIDs() }
@@ -62,6 +75,10 @@ final class ClipboardViewModel: ObservableObject {
     ) {
         self.clipboardMonitor = clipboardMonitor
         self.storageService = storageService
+        self.captureBlacklist = Self.loadCaptureBlacklistFromDefaults()
+        self.clipboardMonitor.updateIgnoredApplications(
+            sanitizedBlacklistEntries(from: captureBlacklist)
+        )
 
         Task { [weak self] in
             await self?.bootstrapHistory()
@@ -156,6 +173,24 @@ final class ClipboardViewModel: ObservableObject {
 
     func clearImageSelection() {
         selectedImageIDs.removeAll()
+    }
+
+    func addCaptureBlacklistEntry() {
+        captureBlacklist.append("")
+    }
+
+    func updateCaptureBlacklistEntry(at index: Int, with value: String) {
+        guard captureBlacklist.indices.contains(index) else {
+            return
+        }
+        captureBlacklist[index] = value
+    }
+
+    func removeCaptureBlacklistEntry(at index: Int) {
+        guard captureBlacklist.indices.contains(index) else {
+            return
+        }
+        captureBlacklist.remove(at: index)
     }
 
     func imageDragProvider(for draggedItem: ClipboardItem) -> NSItemProvider {
@@ -491,5 +526,35 @@ final class ClipboardViewModel: ObservableObject {
         }
 
         return urls
+    }
+
+    private static func loadCaptureBlacklistFromDefaults() -> [String] {
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: captureBlacklistStorageKey) != nil else {
+            return defaultCaptureBlacklist
+        }
+        return defaults.array(forKey: captureBlacklistStorageKey) as? [String] ?? []
+    }
+
+    private func persistAndApplyCaptureBlacklist() {
+        UserDefaults.standard.set(captureBlacklist, forKey: Self.captureBlacklistStorageKey)
+        clipboardMonitor.updateIgnoredApplications(
+            sanitizedBlacklistEntries(from: captureBlacklist)
+        )
+    }
+
+    private func sanitizedBlacklistEntries(from entries: [String]) -> [String] {
+        var seen: Set<String> = []
+        var sanitized: [String] = []
+
+        for entry in entries {
+            let trimmed = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let key = trimmed.lowercased()
+            guard seen.insert(key).inserted else { continue }
+            sanitized.append(trimmed)
+        }
+
+        return sanitized
     }
 }

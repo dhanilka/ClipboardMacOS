@@ -57,6 +57,44 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Capture Blacklist") {
+                Text("ClipVault will ignore clipboard captures while these apps are active.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(Array(viewModel.captureBlacklist.indices), id: \.self) { index in
+                    HStack(spacing: 8) {
+                        TextField(
+                            "App name or bundle ID",
+                            text: Binding(
+                                get: {
+                                    guard viewModel.captureBlacklist.indices.contains(index) else { return "" }
+                                    return viewModel.captureBlacklist[index]
+                                },
+                                set: { newValue in
+                                    viewModel.updateCaptureBlacklistEntry(at: index, with: newValue)
+                                }
+                            )
+                        )
+
+                        Button {
+                            viewModel.removeCaptureBlacklistEntry(at: index)
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove app")
+                    }
+                }
+
+                Button {
+                    viewModel.addCaptureBlacklistEntry()
+                } label: {
+                    Label("Add App", systemImage: "plus")
+                }
+            }
+
             Section("Data") {
                 HStack(spacing: 10) {
                     Button("Export Encrypted JSON") {
