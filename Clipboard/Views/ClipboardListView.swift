@@ -42,6 +42,7 @@ struct ClipboardListView: View {
                                         viewModel.imageDragFileURLs(for: draggedItem)
                                     },
                                     onSelected: {
+                                        viewModel.clearImageSelection()
                                         viewModel.copyItemToClipboard(item)
                                         onItemSelected()
                                     }
@@ -66,6 +67,7 @@ struct ClipboardListView: View {
                                         viewModel.imageDragFileURLs(for: draggedItem)
                                     },
                                     onSelected: {
+                                        viewModel.clearImageSelection()
                                         viewModel.copyItemToClipboard(item)
                                         onItemSelected()
                                     }

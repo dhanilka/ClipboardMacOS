@@ -16,14 +16,13 @@ struct ClipboardItemRow: View {
     @State private var isHovered = false
     @State private var showsLargeImagePreview = false
     @State private var showsLargeTextPreview = false
-    @State private var hoverPreviewTask: DispatchWorkItem?
-    @State private var dismissPreviewTask: DispatchWorkItem?
     @State private var isPreviewPopoverHovered = false
+    @State private var previewTransitionDismissTask: DispatchWorkItem?
     @State private var previewSearchText: String = ""
     @State private var previewEditableText: String = ""
     @ObservedObject private var shiftKeyMonitor = ShiftKeyMonitor.shared
+    @ObservedObject private var rowHoverCoordinator = RowHoverCoordinator.shared
     @State private var lastObservedShiftState = false
-    private let previewDismissDelay: TimeInterval = 0.25
 
     private var iconName: String {
         switch item.contentType {
@@ -124,13 +123,7 @@ struct ClipboardItemRow: View {
                             .frame(width: 64, height: 44)
                             .clipped()
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            .help("Drag image to drop it into another app")
-                            .overlay(
-                                MultiFileDragHandle(
-                                    fileURLsProvider: { dragFileURLs(for: image) },
-                                    onClick: { handleRowTap() }
-                                )
-                            )
+                            .help("Drag image from the row to drop into another app")
                     }
                 }
             }
@@ -144,19 +137,8 @@ struct ClipboardItemRow: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.16)) {
-                isHovered = hovering
-            }
-
-            if hovering {
-                dismissPreviewTask?.cancel()
-                if shiftKeyMonitor.isShiftPressed && !isAnyPreviewVisible {
-                    showPreviewForHoveredItem()
-                }
-            } else {
-                schedulePreviewDismiss()
-            }
+        .overlay {
+            RowHoverTracker(onHoverChanged: handleRowHoverChange)
         }
         .onAppear {
             lastObservedShiftState = shiftKeyMonitor.isShiftPressed
@@ -165,14 +147,21 @@ struct ClipboardItemRow: View {
             let wasPressed = lastObservedShiftState
             lastObservedShiftState = isPressed
 
-            guard isHovered else { return }
+            guard isActiveRowHover else { return }
             if isPressed && !wasPressed {
                 togglePreviewForHoveredItem()
             }
         }
+        .onReceive(rowHoverCoordinator.$hoveredItemID.dropFirst()) { hoveredItemID in
+            guard hoveredItemID != item.id else { return }
+            if !isPreviewPopoverHovered {
+                cancelHoverPreview()
+            }
+        }
         .onDisappear {
-            // Rows are frequently recreated while history updates. Cancel pending work to avoid
-            // delayed state mutations hitting a row that is no longer in the hierarchy.
+            // Ensure any visible preview closes when this row leaves the hierarchy.
+            isHovered = false
+            rowHoverCoordinator.clearIfCurrent(item.id)
             cancelHoverPreview()
         }
         .popover(isPresented: $showsLargeImagePreview, arrowEdge: .trailing) {
@@ -191,6 +180,7 @@ struct ClipboardItemRow: View {
                         .overlay(
                             MultiFileDragHandle(
                                 fileURLsProvider: { dragFileURLs(for: imageContent) },
+                                onHoverChanged: nil,
                                 onClick: nil
                             )
                         )
@@ -202,7 +192,7 @@ struct ClipboardItemRow: View {
                 .padding(14)
                 .frame(width: 590)
                 .onHover { hovering in
-                    handlePopoverHoverChange(hovering)
+                    handlePreviewPopoverHoverChange(hovering)
                 }
             }
         }
@@ -260,7 +250,7 @@ struct ClipboardItemRow: View {
                 .padding(14)
                 .frame(width: 560)
                 .onHover { hovering in
-                    handlePopoverHoverChange(hovering)
+                    handlePreviewPopoverHoverChange(hovering)
                 }
             }
         }
@@ -269,7 +259,7 @@ struct ClipboardItemRow: View {
                 .fill(
                     isImageSelected
                     ? Color.accentColor.opacity(0.16)
-                    : (isHovered
+                    : (isActiveRowHover
                        ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.28)
                        : Color(nsColor: .controlBackgroundColor))
                 )
@@ -278,10 +268,28 @@ struct ClipboardItemRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 0.6)
         )
+        .overlay(alignment: .bottom) {
+            if let imageContent {
+                // Make the whole lower row region draggable (blue area), not only the thumbnail.
+                MultiFileDragHandle(
+                    fileURLsProvider: { dragFileURLs(for: imageContent) },
+                    onHoverChanged: { hovering in
+                        handleRowHoverChange(hovering)
+                    },
+                    onClick: { handleRowTap() }
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+            }
+        }
     }
 
     private var isAnyPreviewVisible: Bool {
         showsLargeTextPreview || showsLargeImagePreview
+    }
+
+    private var isActiveRowHover: Bool {
+        isHovered && rowHoverCoordinator.hoveredItemID == item.id
     }
 
     private var isCommandKeyDown: Bool {
@@ -294,6 +302,38 @@ struct ClipboardItemRow: View {
         } else {
             onClearImageSelection()
             onSelected()
+        }
+    }
+
+    private func handleRowHoverChange(_ hovering: Bool) {
+        withAnimation(.easeOut(duration: 0.16)) {
+            isHovered = hovering
+        }
+
+        if hovering {
+            previewTransitionDismissTask?.cancel()
+            previewTransitionDismissTask = nil
+            rowHoverCoordinator.setHovered(item.id)
+            if shiftKeyMonitor.isShiftPressed && !isAnyPreviewVisible {
+                showPreviewForHoveredItem()
+            }
+        } else {
+            if !isAnyPreviewVisible {
+                rowHoverCoordinator.clearIfCurrent(item.id)
+                cancelHoverPreview()
+                return
+            }
+
+            // Short bridge window to let the cursor travel row -> preview without losing the popover.
+            previewTransitionDismissTask?.cancel()
+            let task = DispatchWorkItem {
+                if !isHovered && !isPreviewPopoverHovered {
+                    rowHoverCoordinator.clearIfCurrent(item.id)
+                    cancelHoverPreview()
+                }
+            }
+            previewTransitionDismissTask = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: task)
         }
     }
 
@@ -322,8 +362,10 @@ struct ClipboardItemRow: View {
     }
 
     private func showPreviewForHoveredItem() {
-        guard isHovered else { return }
-        dismissPreviewTask?.cancel()
+        guard isActiveRowHover else { return }
+        previewTransitionDismissTask?.cancel()
+        previewTransitionDismissTask = nil
+        isPreviewPopoverHovered = false
 
         if textPreviewContent != nil {
             previewSearchText = ""
@@ -337,11 +379,8 @@ struct ClipboardItemRow: View {
     }
 
     private func cancelHoverPreview() {
-        hoverPreviewTask?.cancel()
-        hoverPreviewTask = nil
-        dismissPreviewTask?.cancel()
-        dismissPreviewTask = nil
-
+        previewTransitionDismissTask?.cancel()
+        previewTransitionDismissTask = nil
         showsLargeTextPreview = false
         showsLargeImagePreview = false
         isPreviewPopoverHovered = false
@@ -349,27 +388,16 @@ struct ClipboardItemRow: View {
         previewEditableText = ""
     }
 
-    private func schedulePreviewDismiss() {
-        dismissPreviewTask?.cancel()
-
-        let task = DispatchWorkItem {
-            guard !isHovered, !isPreviewPopoverHovered else {
-                return
-            }
-            cancelHoverPreview()
-        }
-
-        dismissPreviewTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + previewDismissDelay, execute: task)
-    }
-
-    private func handlePopoverHoverChange(_ hovering: Bool) {
+    private func handlePreviewPopoverHoverChange(_ hovering: Bool) {
         isPreviewPopoverHovered = hovering
-
         if hovering {
-            dismissPreviewTask?.cancel()
-        } else if !isHovered {
-            schedulePreviewDismiss()
+            previewTransitionDismissTask?.cancel()
+            previewTransitionDismissTask = nil
+            rowHoverCoordinator.setHovered(item.id)
+        }
+        if !hovering && !isHovered {
+            rowHoverCoordinator.clearIfCurrent(item.id)
+            cancelHoverPreview()
         }
     }
 
@@ -441,29 +469,44 @@ struct ClipboardItemRow: View {
 
 }
 
-private struct MultiFileDragHandle: NSViewRepresentable {
-    let fileURLsProvider: () -> [URL]
-    let onClick: (() -> Void)?
+@MainActor
+private final class RowHoverCoordinator: ObservableObject {
+    static let shared = RowHoverCoordinator()
 
-    func makeNSView(context: Context) -> DragHandleView {
-        let view = DragHandleView()
-        view.fileURLsProvider = fileURLsProvider
-        view.onClick = onClick
-        return view
+    @Published private(set) var hoveredItemID: UUID?
+
+    private init() {}
+
+    func setHovered(_ itemID: UUID) {
+        guard hoveredItemID != itemID else { return }
+        hoveredItemID = itemID
     }
 
-    func updateNSView(_ nsView: DragHandleView, context: Context) {
-        nsView.fileURLsProvider = fileURLsProvider
-        nsView.onClick = onClick
+    func clearIfCurrent(_ itemID: UUID) {
+        guard hoveredItemID == itemID else { return }
+        hoveredItemID = nil
     }
 }
 
-private final class DragHandleView: NSView, NSDraggingSource {
-    var fileURLsProvider: (() -> [URL])?
-    var onClick: (() -> Void)?
+private struct RowHoverTracker: NSViewRepresentable {
+    let onHoverChanged: (Bool) -> Void
 
-    private var hasStartedDrag = false
-    private var mouseDownPoint: NSPoint = .zero
+    func makeNSView(context: Context) -> RowHoverTrackingView {
+        let view = RowHoverTrackingView()
+        view.onHoverChanged = onHoverChanged
+        return view
+    }
+
+    func updateNSView(_ nsView: RowHoverTrackingView, context: Context) {
+        nsView.onHoverChanged = onHoverChanged
+    }
+}
+
+private final class RowHoverTrackingView: NSView {
+    var onHoverChanged: ((Bool) -> Void)?
+
+    private var trackingAreaRef: NSTrackingArea?
+    private var isPointerInside = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -475,6 +518,160 @@ private final class DragHandleView: NSView, NSDraggingSource {
         super.init(coder: coder)
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Keep row interactions handled by underlying SwiftUI content.
+        nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+
+        if let trackingAreaRef {
+            removeTrackingArea(trackingAreaRef)
+        }
+
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingAreaRef = area
+        DispatchQueue.main.async { [weak self] in
+            self?.syncPointerState()
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        setPointerInside(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        setPointerInside(false)
+    }
+
+    override func viewWillMove(toSuperview newSuperview: NSView?) {
+        if newSuperview == nil {
+            setPointerInside(false)
+        }
+        super.viewWillMove(toSuperview: newSuperview)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            setPointerInside(false)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.syncPointerState()
+            }
+        }
+    }
+
+    func syncPointerState() {
+        guard let window else {
+            setPointerInside(false)
+            return
+        }
+
+        let locationInWindow = window.mouseLocationOutsideOfEventStream
+        let localPoint = convert(locationInWindow, from: nil)
+        setPointerInside(bounds.contains(localPoint))
+    }
+
+    private func setPointerInside(_ inside: Bool) {
+        guard isPointerInside != inside else { return }
+        isPointerInside = inside
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.isPointerInside == inside else { return }
+            self.onHoverChanged?(inside)
+        }
+    }
+}
+
+private struct MultiFileDragHandle: NSViewRepresentable {
+    let fileURLsProvider: () -> [URL]
+    let onHoverChanged: ((Bool) -> Void)?
+    let onClick: (() -> Void)?
+
+    func makeNSView(context: Context) -> DragHandleView {
+        let view = DragHandleView()
+        view.fileURLsProvider = fileURLsProvider
+        view.onHoverChanged = onHoverChanged
+        view.onClick = onClick
+        return view
+    }
+
+    func updateNSView(_ nsView: DragHandleView, context: Context) {
+        nsView.fileURLsProvider = fileURLsProvider
+        nsView.onHoverChanged = onHoverChanged
+        nsView.onClick = onClick
+    }
+}
+
+private final class DragHandleView: NSView, NSDraggingSource {
+    var fileURLsProvider: (() -> [URL])?
+    var onHoverChanged: ((Bool) -> Void)?
+    var onClick: (() -> Void)?
+
+    private var hasStartedDrag = false
+    private var mouseDownPoint: NSPoint = .zero
+    private var trackingAreaRef: NSTrackingArea?
+    private var isMouseInside = false
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+
+        if let trackingAreaRef {
+            removeTrackingArea(trackingAreaRef)
+        }
+
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingAreaRef = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        isMouseInside = true
+        onHoverChanged?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        isMouseInside = false
+        onHoverChanged?(false)
+    }
+
+    override func viewWillMove(toSuperview newSuperview: NSView?) {
+        if newSuperview == nil && isMouseInside {
+            isMouseInside = false
+            onHoverChanged?(false)
+        }
+        super.viewWillMove(toSuperview: newSuperview)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil && isMouseInside {
+            isMouseInside = false
+            onHoverChanged?(false)
+        }
     }
 
     override func mouseDown(with event: NSEvent) {

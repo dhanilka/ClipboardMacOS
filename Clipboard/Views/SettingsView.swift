@@ -12,7 +12,6 @@ struct SettingsView: View {
     @State private var dataStatusMessage: String?
     @State private var dataStatusIsError = false
     @State private var isDataActionRunning = false
-    @AppStorage("clipvault.previewDelayMs") private var previewDelayMs: Double = 300
 
     var body: some View {
         Form {
@@ -42,32 +41,6 @@ struct SettingsView: View {
                 Text("Press Esc to cancel recording. Shortcuts need at least one modifier key.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-
-            Section("Preview") {
-                HStack {
-                    Text("Hover Delay")
-                    Spacer()
-                    Text("\(Int(previewDelayMs)) ms")
-                        .font(.body.monospaced())
-                        .foregroundStyle(.secondary)
-                }
-
-                Slider(value: $previewDelayMs, in: 0...2000, step: 50) {
-                    Text("Hover Delay")
-                } minimumValueLabel: {
-                    Text("0")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } maximumValueLabel: {
-                    Text("2000")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Button("Reset to Default (300 ms)") {
-                    previewDelayMs = 300
-                }
             }
 
             Section("Data") {
