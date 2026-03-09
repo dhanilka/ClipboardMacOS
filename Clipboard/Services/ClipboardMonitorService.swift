@@ -13,6 +13,9 @@ final class ClipboardMonitorService {
     private var timer: DispatchSourceTimer?
     private var lastChangeCount: Int
     private var ignoredApplications: [String] = []
+    private var lastIgnoredSource: SourceApplication?
+    private var lastIgnoredAt: Date = .distantPast
+    private let ignoredSourceGraceInterval: TimeInterval = 1.0
 
     init(pasteboard: NSPasteboard = .general) {
         self.pasteboard = pasteboard
@@ -98,10 +101,36 @@ final class ClipboardMonitorService {
             return false
         }
 
-        guard let sourceApplication = currentFrontmostApplication() else {
+        let sourceApplication = currentFrontmostApplication()
+        if let sourceApplication, shouldIgnoreSourceApplication(sourceApplication) {
+            rememberIgnoredSource(sourceApplication)
+            return true
+        }
+
+        // Frontmost app can briefly flicker (or be nil) while users copy quickly.
+        // Keep ignoring for a short grace period after a blocked source is seen.
+        guard Date().timeIntervalSince(lastIgnoredAt) <= ignoredSourceGraceInterval else {
             return false
         }
 
+        guard let sourceApplication else {
+            return true
+        }
+
+        if sourceApplication.matches(lastIgnoredSource) {
+            return true
+        }
+
+        // If ClipVault is frontmost immediately after a blocked copy, keep ignoring
+        // this short burst to avoid accidental captures from rapid Cmd+C spam.
+        if sourceApplication.isClipVaultSelf {
+            return true
+        }
+
+        return false
+    }
+
+    private func shouldIgnoreSourceApplication(_ sourceApplication: SourceApplication) -> Bool {
         let bundleID = sourceApplication.bundleIdentifier?.lowercased() ?? ""
         let appName = sourceApplication.localizedName?.lowercased() ?? ""
         if bundleID.isEmpty && appName.isEmpty {
@@ -109,11 +138,25 @@ final class ClipboardMonitorService {
         }
 
         return ignoredApplications.contains { rule in
-            if rule.contains(".") {
+            if isBundleIdentifierRule(rule) {
                 return bundleID == rule || bundleID.hasPrefix(rule) || bundleID.contains(rule)
             }
             return appName.contains(rule) || bundleID.contains(rule)
         }
+    }
+
+    private func rememberIgnoredSource(_ sourceApplication: SourceApplication) {
+        lastIgnoredSource = sourceApplication
+        lastIgnoredAt = Date()
+    }
+
+    private func isBundleIdentifierRule(_ rule: String) -> Bool {
+        // Treat reverse-DNS-like strings as bundle IDs; everything else as app name.
+        guard rule.contains(".") else { return false }
+        guard !rule.contains("/") else { return false }
+        guard !rule.contains(where: \.isWhitespace) else { return false }
+        guard !rule.hasSuffix(".app") else { return false }
+        return true
     }
 
     private func currentFrontmostApplication() -> SourceApplication? {
@@ -132,5 +175,31 @@ final class ClipboardMonitorService {
             bundleIdentifier: frontmost.bundleIdentifier,
             localizedName: frontmost.localizedName
         )
+    }
+}
+
+private extension ClipboardMonitorService.SourceApplication {
+    func matches(_ other: ClipboardMonitorService.SourceApplication?) -> Bool {
+        guard let other else { return false }
+        let lhsBundle = bundleIdentifier?.lowercased() ?? ""
+        let rhsBundle = other.bundleIdentifier?.lowercased() ?? ""
+        if !lhsBundle.isEmpty, !rhsBundle.isEmpty {
+            return lhsBundle == rhsBundle
+        }
+
+        let lhsName = localizedName?.lowercased() ?? ""
+        let rhsName = other.localizedName?.lowercased() ?? ""
+        return !lhsName.isEmpty && lhsName == rhsName
+    }
+
+    var isClipVaultSelf: Bool {
+        let selfBundleID = Bundle.main.bundleIdentifier?.lowercased()
+        let currentBundleID = bundleIdentifier?.lowercased()
+        if let selfBundleID, let currentBundleID, !selfBundleID.isEmpty, currentBundleID == selfBundleID {
+            return true
+        }
+
+        let appName = localizedName?.lowercased() ?? ""
+        return appName.contains("clipvault")
     }
 }
