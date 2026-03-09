@@ -65,16 +65,19 @@ final class ClipboardViewModel: ObservableObject {
 
     private let clipboardMonitor: ClipboardMonitorService
     private let storageService: ClipboardStorageService
+    private let imageOCRService: ImageOCRService
     private let historyLimit = 100
     private var cancellables: Set<AnyCancellable> = []
     private var isBootstrapping = true
 
     init(
         clipboardMonitor: ClipboardMonitorService,
-        storageService: ClipboardStorageService
+        storageService: ClipboardStorageService,
+        imageOCRService: ImageOCRService
     ) {
         self.clipboardMonitor = clipboardMonitor
         self.storageService = storageService
+        self.imageOCRService = imageOCRService
         self.captureBlacklist = Self.loadCaptureBlacklistFromDefaults()
         self.clipboardMonitor.updateIgnoredApplications(
             sanitizedBlacklistEntries(from: captureBlacklist)
@@ -88,7 +91,8 @@ final class ClipboardViewModel: ObservableObject {
     convenience init() {
         self.init(
             clipboardMonitor: ClipboardMonitorService(),
-            storageService: ClipboardStorageService()
+            storageService: ClipboardStorageService(),
+            imageOCRService: ImageOCRService()
         )
     }
 
@@ -156,6 +160,26 @@ final class ClipboardViewModel: ObservableObject {
         case .image(let image):
             pasteboard.writeObjects([image])
         }
+    }
+
+    func extractTextFromImageData(_ imageData: Data) async throws -> String {
+        try await imageOCRService.extractText(fromImageData: imageData)
+    }
+
+    func copyExtractedTextToClipboard(_ text: String) {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(normalized, forType: .string)
+    }
+
+    func saveExtractedTextAsNewItem(_ text: String) {
+        guard let textItem = ClipboardItem.fromText(text) else {
+            return
+        }
+        addClipboardItem(textItem)
     }
 
     func isImageSelected(_ item: ClipboardItem) -> Bool {

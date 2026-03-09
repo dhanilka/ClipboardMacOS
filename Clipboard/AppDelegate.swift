@@ -315,7 +315,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
         guard let panel = notification.object as? NSPanel, panel == quickPickerPanel else {
             return
         }
-        closeQuickPicker()
+        // OCR sheet/popovers can temporarily move key focus within the app.
+        // Only close the quick picker after the app actually deactivates.
+        DispatchQueue.main.async { [weak self, weak panel] in
+            guard let self, let panel else { return }
+            guard panel == self.quickPickerPanel else { return }
+            guard !NSApp.isActive else { return }
+            self.closeQuickPicker()
+        }
     }
 
     private func pasteIntoPreviouslyActiveApp() {

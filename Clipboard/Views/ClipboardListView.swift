@@ -15,6 +15,11 @@ struct ClipboardListView: View {
     @State private var copyToastWorkItem: DispatchWorkItem?
     @State private var keyboardSelectedItemID: UUID?
     @State private var keyEventMonitor: Any?
+    @State private var ocrSourceItem: ClipboardItem?
+    @State private var ocrRecognizedText: String = ""
+    @State private var ocrErrorMessage: String?
+    @State private var isOCRRunning = false
+    @State private var ocrTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -85,6 +90,7 @@ struct ClipboardListView: View {
                                         isKeyboardSelected: keyboardSelectedItemID == item.id,
                                         onCopyTapped: { handleCopyButtonTap(for: item) },
                                         onPinTapped: { viewModel.togglePin(for: item) },
+                                        onExtractTextTapped: { startOCR(for: item) },
                                         onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
                                         onClearImageSelection: { viewModel.clearImageSelection() },
                                         onSaveEditedText: { editedText in
@@ -113,6 +119,7 @@ struct ClipboardListView: View {
                                         isKeyboardSelected: keyboardSelectedItemID == item.id,
                                         onCopyTapped: { handleCopyButtonTap(for: item) },
                                         onPinTapped: { viewModel.togglePin(for: item) },
+                                        onExtractTextTapped: { startOCR(for: item) },
                                         onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
                                         onClearImageSelection: { viewModel.clearImageSelection() },
                                         onSaveEditedText: { editedText in
@@ -227,6 +234,7 @@ struct ClipboardListView: View {
         }
         .onDisappear {
             removeKeyEventMonitor()
+            dismissOCRSheet()
         }
         .onChange(of: viewModel.searchText) { _, _ in
             syncKeyboardSelection()
@@ -236,6 +244,20 @@ struct ClipboardListView: View {
         }
         .onChange(of: viewModel.items.map(\.id)) { _, _ in
             syncKeyboardSelection()
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { ocrSourceItem != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        dismissOCRSheet()
+                    }
+                }
+            )
+        ) {
+            if let ocrSourceItem {
+                ocrResultSheet(for: ocrSourceItem)
+            }
         }
     }
 
@@ -372,6 +394,127 @@ struct ClipboardListView: View {
         }
         copyToastWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: workItem)
+    }
+
+    private func startOCR(for item: ClipboardItem) {
+        guard case .image(let image) = item.content else {
+            return
+        }
+
+        guard let imageData = image.tiffRepresentation else {
+            ocrSourceItem = item
+            isOCRRunning = false
+            ocrRecognizedText = ""
+            ocrErrorMessage = "Unable to read this image for OCR."
+            return
+        }
+
+        ocrTask?.cancel()
+        ocrSourceItem = item
+        isOCRRunning = true
+        ocrRecognizedText = ""
+        ocrErrorMessage = nil
+
+        let sourceItemID = item.id
+        ocrTask = Task {
+            do {
+                let extractedText = try await viewModel.extractTextFromImageData(imageData)
+                try Task.checkCancellation()
+                await MainActor.run {
+                    guard ocrSourceItem?.id == sourceItemID else { return }
+                    isOCRRunning = false
+                    ocrRecognizedText = extractedText
+                }
+            } catch is CancellationError {
+                // Cancel is expected when the sheet is dismissed or user reruns OCR.
+            } catch {
+                await MainActor.run {
+                    guard ocrSourceItem?.id == sourceItemID else { return }
+                    isOCRRunning = false
+                    ocrErrorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func dismissOCRSheet() {
+        ocrTask?.cancel()
+        ocrTask = nil
+        ocrSourceItem = nil
+        isOCRRunning = false
+        ocrRecognizedText = ""
+        ocrErrorMessage = nil
+    }
+
+    @ViewBuilder
+    private func ocrResultSheet(for item: ClipboardItem) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Image OCR", systemImage: "text.viewfinder")
+                    .font(.headline)
+
+                Spacer()
+
+                Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if isOCRRunning {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Extracting text in background…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let ocrErrorMessage {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(ocrErrorMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Button("Retry OCR") {
+                        startOCR(for: item)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                TextEditor(text: $ocrRecognizedText)
+                    .font(.system(.body, design: .default))
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(nsColor: .textBackgroundColor))
+                    )
+                    .frame(minHeight: 260)
+            }
+
+            HStack {
+                Button("Cancel") {
+                    dismissOCRSheet()
+                }
+
+                Spacer()
+
+                Button("Copy") {
+                    viewModel.copyExtractedTextToClipboard(ocrRecognizedText)
+                    showCopyToast()
+                }
+                .disabled(isOCRRunning || ocrRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                Button("Save as Text Item") {
+                    viewModel.saveExtractedTextAsNewItem(ocrRecognizedText)
+                    dismissOCRSheet()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isOCRRunning || ocrRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 560, height: 420)
     }
 
     @ViewBuilder

@@ -9,6 +9,7 @@ struct ClipboardItemRow: View {
     let isKeyboardSelected: Bool
     let onCopyTapped: () -> Void
     let onPinTapped: () -> Void
+    let onExtractTextTapped: () -> Void
     let onImageSelectionToggle: () -> Void
     let onClearImageSelection: () -> Void
     let onSaveEditedText: (String) -> Void
@@ -101,6 +102,16 @@ struct ClipboardItemRow: View {
 
                         if item.contentType == .image {
                             Button {
+                                onExtractTextTapped()
+                            } label: {
+                                Image(systemName: "text.viewfinder")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .help("Extract text from image (OCR)")
+
+                            Button {
                                 onImageSelectionToggle()
                             } label: {
                                 Image(systemName: isImageSelected ? "checkmark.square.fill" : "square")
@@ -180,9 +191,23 @@ struct ClipboardItemRow: View {
         .popover(isPresented: $showsLargeImagePreview, arrowEdge: .trailing) {
             if let imageContent {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Image Preview")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+                    HStack {
+                        Text("Image Preview")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        Button {
+                            onExtractTextTapped()
+                        } label: {
+                            Label("OCR", systemImage: "text.viewfinder")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Extract text from this image")
+                    }
 
                     Image(nsImage: imageContent)
                         .resizable()
@@ -942,6 +967,7 @@ private struct SearchableEditableTextView: NSViewRepresentable {
         isKeyboardSelected: false,
         onCopyTapped: {},
         onPinTapped: {},
+        onExtractTextTapped: {},
         onImageSelectionToggle: {},
         onClearImageSelection: {},
         onSaveEditedText: { _ in },
