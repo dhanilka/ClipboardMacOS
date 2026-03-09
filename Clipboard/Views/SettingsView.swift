@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @ObservedObject var hotkeyManager: GlobalHotkeyManager
     @ObservedObject var viewModel: ClipboardViewModel
+    @AppStorage(appThemeStorageKey) private var appThemeRawValue = AppTheme.dark.rawValue
 
     @State private var isRecording = false
     @State private var keyMonitor: Any?
@@ -13,8 +14,21 @@ struct SettingsView: View {
     @State private var dataStatusIsError = false
     @State private var isDataActionRunning = false
 
+    private var selectedTheme: AppTheme {
+        AppTheme(rawValue: appThemeRawValue) ?? .dark
+    }
+
     var body: some View {
         Form {
+            Section("Appearance") {
+                Picker("Theme", selection: $appThemeRawValue) {
+                    ForEach(AppTheme.allCases) { theme in
+                        Text(theme.title).tag(theme.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             Section("Global Shortcut") {
                 HStack {
                     Text("Current")
@@ -70,6 +84,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 420)
         .padding(16)
+        .preferredColorScheme(selectedTheme.colorScheme)
         .onDisappear {
             stopRecording()
         }

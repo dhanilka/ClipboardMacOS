@@ -93,7 +93,6 @@ struct ClipboardListView: View {
                                             viewModel.imageDragFileURLs(for: draggedItem)
                                         },
                                         onSelected: {
-                                            keyboardSelectedItemID = item.id
                                             viewModel.clearImageSelection()
                                             viewModel.copyItemToClipboard(item)
                                             onItemSelected()
@@ -122,7 +121,6 @@ struct ClipboardListView: View {
                                             viewModel.imageDragFileURLs(for: draggedItem)
                                         },
                                         onSelected: {
-                                            keyboardSelectedItemID = item.id
                                             viewModel.clearImageSelection()
                                             viewModel.copyItemToClipboard(item)
                                             onItemSelected()
@@ -220,7 +218,6 @@ struct ClipboardListView: View {
         .animation(.snappy(duration: 0.16), value: isCopyToastVisible)
         .onAppear {
             installKeyEventMonitor()
-            syncKeyboardSelection()
         }
         .onDisappear {
             removeKeyEventMonitor()
@@ -256,7 +253,6 @@ struct ClipboardListView: View {
     }
 
     private func handleCopyButtonTap(for item: ClipboardItem) {
-        keyboardSelectedItemID = item.id
         viewModel.copyItemToClipboard(item)
         showCopyToast()
     }
@@ -348,11 +344,12 @@ struct ClipboardListView: View {
             return
         }
 
-        if let keyboardSelectedItemID, items.contains(where: { $0.id == keyboardSelectedItemID }) {
-            return
+        if let keyboardSelectedItemID {
+            if items.contains(where: { $0.id == keyboardSelectedItemID }) {
+                return
+            }
+            self.keyboardSelectedItemID = nil
         }
-
-        keyboardSelectedItemID = items.first?.id
     }
 
     private func showCopyToast() {

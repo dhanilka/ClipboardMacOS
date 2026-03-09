@@ -271,12 +271,12 @@ struct ClipboardItemRow: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(
                     isImageSelected
-                    ? Color.accentColor.opacity(0.16)
+                    ? Color.accentColor.opacity(0.14)
                     : (isKeyboardSelected
-                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.34)
+                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.22)
                        : (isActiveRowHover
-                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.28)
-                       : Color(nsColor: .controlBackgroundColor)))
+                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16)
+                       : Color(nsColor: .controlBackgroundColor).opacity(0.68)))
                 )
         )
         .overlay(
