@@ -273,9 +273,7 @@ struct ClipboardItemRow: View {
                 // Make the whole lower row region draggable (blue area), not only the thumbnail.
                 MultiFileDragHandle(
                     fileURLsProvider: { dragFileURLs(for: imageContent) },
-                    onHoverChanged: { hovering in
-                        handleRowHoverChange(hovering)
-                    },
+                    onHoverChanged: nil,
                     onClick: { handleRowTap() }
                 )
                 .frame(maxWidth: .infinity)
@@ -306,9 +304,9 @@ struct ClipboardItemRow: View {
     }
 
     private func handleRowHoverChange(_ hovering: Bool) {
-        withAnimation(.easeOut(duration: 0.16)) {
-            isHovered = hovering
-        }
+        guard isHovered != hovering else { return }
+
+        isHovered = hovering
 
         if hovering {
             previewTransitionDismissTask?.cancel()
