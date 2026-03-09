@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import AppKit
 
 struct ClipboardListView: View {
     @ObservedObject var viewModel: ClipboardViewModel
@@ -8,6 +9,8 @@ struct ClipboardListView: View {
     @FocusState private var isSearchFocused: Bool
     @State private var showClearConfirmation = false
     @State private var isSearchExpanded = false
+    @State private var isCopyToastVisible = false
+    @State private var copyToastWorkItem: DispatchWorkItem?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -74,6 +77,7 @@ struct ClipboardListView: View {
                                 ClipboardItemRow(
                                     item: item,
                                     isImageSelected: viewModel.isImageSelected(item),
+                                    onCopyTapped: { handleCopyButtonTap(for: item) },
                                     onPinTapped: { viewModel.togglePin(for: item) },
                                     onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
                                     onClearImageSelection: { viewModel.clearImageSelection() },
@@ -99,6 +103,7 @@ struct ClipboardListView: View {
                                 ClipboardItemRow(
                                     item: item,
                                     isImageSelected: viewModel.isImageSelected(item),
+                                    onCopyTapped: { handleCopyButtonTap(for: item) },
                                     onPinTapped: { viewModel.togglePin(for: item) },
                                     onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
                                     onClearImageSelection: { viewModel.clearImageSelection() },
@@ -137,12 +142,42 @@ struct ClipboardListView: View {
 
                 Spacer()
 
-                SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
+                HStack(spacing: 10) {
+                    SettingsLink {
+                        Image(systemName: "gearshape")
+                    }
+                    .help("Settings")
+
+                    Button {
+                        NSApp.terminate(nil)
+                    } label: {
+                        Image(systemName: "power")
+                    }
+                    .buttonStyle(.plain)
+                    .help("Quit ClipVault")
                 }
             }
         }
         .padding(14)
+        .overlay(alignment: .top) {
+            if isCopyToastVisible {
+                Text("Copied")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(.regularMaterial)
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.6)
+                    )
+                    .padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
         .onReceive(viewModel.$searchFocusTrigger.dropFirst()) { _ in
             if !isSearchExpanded {
                 withAnimation(.snappy(duration: 0.18)) {
@@ -165,6 +200,7 @@ struct ClipboardListView: View {
         } message: {
             Text("This removes all non-pinned clipboard items.")
         }
+        .animation(.snappy(duration: 0.16), value: isCopyToastVisible)
     }
 
     private func toggleSearchBar() {
@@ -180,6 +216,27 @@ struct ClipboardListView: View {
             isSearchFocused = false
             viewModel.searchText = ""
         }
+    }
+
+    private func handleCopyButtonTap(for item: ClipboardItem) {
+        viewModel.copyItemToClipboard(item)
+        showCopyToast()
+    }
+
+    private func showCopyToast() {
+        copyToastWorkItem?.cancel()
+
+        withAnimation(.snappy(duration: 0.14)) {
+            isCopyToastVisible = true
+        }
+
+        let workItem = DispatchWorkItem {
+            withAnimation(.snappy(duration: 0.14)) {
+                isCopyToastVisible = false
+            }
+        }
+        copyToastWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85, execute: workItem)
     }
 
     @ViewBuilder

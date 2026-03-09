@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let isImageSelected: Bool
+    let onCopyTapped: () -> Void
     let onPinTapped: () -> Void
     let onImageSelectionToggle: () -> Void
     let onClearImageSelection: () -> Void
@@ -75,6 +76,17 @@ struct ClipboardItemRow: View {
                             .foregroundStyle(.secondary)
 
                         Spacer()
+
+                        Button {
+                            onClearImageSelection()
+                            onCopyTapped()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Copy item")
 
                         Button {
                             onPinTapped()
@@ -916,6 +928,7 @@ private struct SearchableEditableTextView: NSViewRepresentable {
     ClipboardItemRow(
         item: .fromText("Example clipboard value\nwith second line")!,
         isImageSelected: false,
+        onCopyTapped: {},
         onPinTapped: {},
         onImageSelectionToggle: {},
         onClearImageSelection: {},
