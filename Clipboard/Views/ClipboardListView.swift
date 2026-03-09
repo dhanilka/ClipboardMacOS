@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import AppKit
+import Carbon
 
 struct ClipboardListView: View {
     @ObservedObject var viewModel: ClipboardViewModel
@@ -11,6 +12,8 @@ struct ClipboardListView: View {
     @State private var isSearchExpanded = false
     @State private var isCopyToastVisible = false
     @State private var copyToastWorkItem: DispatchWorkItem?
+    @State private var keyboardSelectedItemID: UUID?
+    @State private var keyEventMonitor: Any?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -59,70 +62,84 @@ struct ClipboardListView: View {
             }
             .animation(.snappy(duration: 0.18), value: isSearchExpanded)
 
-            ScrollView {
-                if !viewModel.hasVisibleItems {
-                    ContentUnavailableView(
-                        "No Clipboard History",
-                        systemImage: "clipboard",
-                        description: Text("Copied items will appear here.")
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 20)
-                } else {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        if !viewModel.filteredPinnedItems.isEmpty {
-                            sectionHeader("Pinned")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    if !viewModel.hasVisibleItems {
+                        ContentUnavailableView(
+                            "No Clipboard History",
+                            systemImage: "clipboard",
+                            description: Text("Copied items will appear here.")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 20)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            if !viewModel.filteredPinnedItems.isEmpty {
+                                sectionHeader("Pinned")
 
-                            ForEach(viewModel.filteredPinnedItems) { item in
-                                ClipboardItemRow(
-                                    item: item,
-                                    isImageSelected: viewModel.isImageSelected(item),
-                                    onCopyTapped: { handleCopyButtonTap(for: item) },
-                                    onPinTapped: { viewModel.togglePin(for: item) },
-                                    onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
-                                    onClearImageSelection: { viewModel.clearImageSelection() },
-                                    onSaveEditedText: { editedText in
-                                        viewModel.saveEditedText(for: item, updatedText: editedText)
-                                    },
-                                    onImageDragFileURLs: { draggedItem in
-                                        viewModel.imageDragFileURLs(for: draggedItem)
-                                    },
-                                    onSelected: {
-                                        viewModel.clearImageSelection()
-                                        viewModel.copyItemToClipboard(item)
-                                        onItemSelected()
-                                    }
-                                )
+                                ForEach(viewModel.filteredPinnedItems) { item in
+                                    ClipboardItemRow(
+                                        item: item,
+                                        isImageSelected: viewModel.isImageSelected(item),
+                                        isKeyboardSelected: keyboardSelectedItemID == item.id,
+                                        onCopyTapped: { handleCopyButtonTap(for: item) },
+                                        onPinTapped: { viewModel.togglePin(for: item) },
+                                        onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
+                                        onClearImageSelection: { viewModel.clearImageSelection() },
+                                        onSaveEditedText: { editedText in
+                                            viewModel.saveEditedText(for: item, updatedText: editedText)
+                                        },
+                                        onImageDragFileURLs: { draggedItem in
+                                            viewModel.imageDragFileURLs(for: draggedItem)
+                                        },
+                                        onSelected: {
+                                            keyboardSelectedItemID = item.id
+                                            viewModel.clearImageSelection()
+                                            viewModel.copyItemToClipboard(item)
+                                            onItemSelected()
+                                        }
+                                    )
+                                    .id(item.id)
+                                }
+                            }
+
+                            if !viewModel.filteredHistoryItems.isEmpty {
+                                sectionHeader("Recent")
+
+                                ForEach(viewModel.filteredHistoryItems) { item in
+                                    ClipboardItemRow(
+                                        item: item,
+                                        isImageSelected: viewModel.isImageSelected(item),
+                                        isKeyboardSelected: keyboardSelectedItemID == item.id,
+                                        onCopyTapped: { handleCopyButtonTap(for: item) },
+                                        onPinTapped: { viewModel.togglePin(for: item) },
+                                        onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
+                                        onClearImageSelection: { viewModel.clearImageSelection() },
+                                        onSaveEditedText: { editedText in
+                                            viewModel.saveEditedText(for: item, updatedText: editedText)
+                                        },
+                                        onImageDragFileURLs: { draggedItem in
+                                            viewModel.imageDragFileURLs(for: draggedItem)
+                                        },
+                                        onSelected: {
+                                            keyboardSelectedItemID = item.id
+                                            viewModel.clearImageSelection()
+                                            viewModel.copyItemToClipboard(item)
+                                            onItemSelected()
+                                        }
+                                    )
+                                    .id(item.id)
+                                }
                             }
                         }
-
-                        if !viewModel.filteredHistoryItems.isEmpty {
-                            sectionHeader("Recent")
-
-                            ForEach(viewModel.filteredHistoryItems) { item in
-                                ClipboardItemRow(
-                                    item: item,
-                                    isImageSelected: viewModel.isImageSelected(item),
-                                    onCopyTapped: { handleCopyButtonTap(for: item) },
-                                    onPinTapped: { viewModel.togglePin(for: item) },
-                                    onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
-                                    onClearImageSelection: { viewModel.clearImageSelection() },
-                                    onSaveEditedText: { editedText in
-                                        viewModel.saveEditedText(for: item, updatedText: editedText)
-                                    },
-                                    onImageDragFileURLs: { draggedItem in
-                                        viewModel.imageDragFileURLs(for: draggedItem)
-                                    },
-                                    onSelected: {
-                                        viewModel.clearImageSelection()
-                                        viewModel.copyItemToClipboard(item)
-                                        onItemSelected()
-                                    }
-                                )
-                            }
-                        }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
+                }
+                .onChange(of: keyboardSelectedItemID) { _, selectedID in
+                    guard let selectedID else { return }
+                    withAnimation(.snappy(duration: 0.14)) {
+                        proxy.scrollTo(selectedID, anchor: .center)
+                    }
                 }
             }
             .animation(.snappy(duration: 0.2), value: viewModel.searchText)
@@ -201,6 +218,26 @@ struct ClipboardListView: View {
             Text("This removes all non-pinned clipboard items.")
         }
         .animation(.snappy(duration: 0.16), value: isCopyToastVisible)
+        .onAppear {
+            installKeyEventMonitor()
+            syncKeyboardSelection()
+        }
+        .onDisappear {
+            removeKeyEventMonitor()
+        }
+        .onChange(of: viewModel.searchText) { _, _ in
+            syncKeyboardSelection()
+        }
+        .onChange(of: viewModel.selectedContentFilter) { _, _ in
+            syncKeyboardSelection()
+        }
+        .onChange(of: viewModel.items.map(\.id)) { _, _ in
+            syncKeyboardSelection()
+        }
+    }
+
+    private var orderedVisibleItems: [ClipboardItem] {
+        viewModel.filteredPinnedItems + viewModel.filteredHistoryItems
     }
 
     private func toggleSearchBar() {
@@ -219,8 +256,103 @@ struct ClipboardListView: View {
     }
 
     private func handleCopyButtonTap(for item: ClipboardItem) {
+        keyboardSelectedItemID = item.id
         viewModel.copyItemToClipboard(item)
         showCopyToast()
+    }
+
+    private func installKeyEventMonitor() {
+        guard keyEventMonitor == nil else { return }
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handleKeyDown(event) ? nil : event
+        }
+    }
+
+    private func removeKeyEventMonitor() {
+        if let keyEventMonitor {
+            NSEvent.removeMonitor(keyEventMonitor)
+            self.keyEventMonitor = nil
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard NSApp.isActive else { return false }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        switch event.keyCode {
+        case UInt16(kVK_Tab):
+            let hasDisallowedModifiers =
+                flags.contains(.command) ||
+                flags.contains(.control) ||
+                flags.contains(.option)
+            guard !hasDisallowedModifiers else { return false }
+            moveKeyboardSelection(backward: flags.contains(.shift))
+            return true
+
+        case UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter):
+            let hasDisallowedModifiers =
+                flags.contains(.command) ||
+                flags.contains(.control) ||
+                flags.contains(.option)
+            guard !hasDisallowedModifiers else { return false }
+            return activateKeyboardSelection()
+
+        default:
+            return false
+        }
+    }
+
+    private func moveKeyboardSelection(backward: Bool) {
+        let items = orderedVisibleItems
+        guard !items.isEmpty else {
+            keyboardSelectedItemID = nil
+            return
+        }
+
+        let currentIndex = items.firstIndex { $0.id == keyboardSelectedItemID }
+        let nextIndex: Int
+
+        if let currentIndex {
+            if backward {
+                nextIndex = (currentIndex - 1 + items.count) % items.count
+            } else {
+                nextIndex = (currentIndex + 1) % items.count
+            }
+        } else {
+            nextIndex = backward ? (items.count - 1) : 0
+        }
+
+        keyboardSelectedItemID = items[nextIndex].id
+    }
+
+    private func activateKeyboardSelection() -> Bool {
+        let items = orderedVisibleItems
+        guard !items.isEmpty else { return false }
+
+        let selectedItem =
+            items.first(where: { $0.id == keyboardSelectedItemID }) ??
+            items.first
+
+        guard let selectedItem else { return false }
+        keyboardSelectedItemID = selectedItem.id
+        viewModel.clearImageSelection()
+        viewModel.copyItemToClipboard(selectedItem)
+        onItemSelected()
+        return true
+    }
+
+    private func syncKeyboardSelection() {
+        let items = orderedVisibleItems
+        guard !items.isEmpty else {
+            keyboardSelectedItemID = nil
+            return
+        }
+
+        if let keyboardSelectedItemID, items.contains(where: { $0.id == keyboardSelectedItemID }) {
+            return
+        }
+
+        keyboardSelectedItemID = items.first?.id
     }
 
     private func showCopyToast() {

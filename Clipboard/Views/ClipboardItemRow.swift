@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ClipboardItemRow: View {
     let item: ClipboardItem
     let isImageSelected: Bool
+    let isKeyboardSelected: Bool
     let onCopyTapped: () -> Void
     let onPinTapped: () -> Void
     let onImageSelectionToggle: () -> Void
@@ -271,9 +272,11 @@ struct ClipboardItemRow: View {
                 .fill(
                     isImageSelected
                     ? Color.accentColor.opacity(0.16)
-                    : (isActiveRowHover
+                    : (isKeyboardSelected
+                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.34)
+                       : (isActiveRowHover
                        ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.28)
-                       : Color(nsColor: .controlBackgroundColor))
+                       : Color(nsColor: .controlBackgroundColor)))
                 )
         )
         .overlay(
@@ -928,6 +931,7 @@ private struct SearchableEditableTextView: NSViewRepresentable {
     ClipboardItemRow(
         item: .fromText("Example clipboard value\nwith second line")!,
         isImageSelected: false,
+        isKeyboardSelected: false,
         onCopyTapped: {},
         onPinTapped: {},
         onImageSelectionToggle: {},
