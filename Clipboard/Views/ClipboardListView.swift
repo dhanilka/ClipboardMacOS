@@ -6,6 +6,7 @@ import Carbon
 struct ClipboardListView: View {
     @ObservedObject var viewModel: ClipboardViewModel
     let onItemSelected: () -> Void
+    let showsFooter: Bool
 
     @FocusState private var isSearchFocused: Bool
     @State private var showClearConfirmation = false
@@ -139,37 +140,42 @@ struct ClipboardListView: View {
                         proxy.scrollTo(selectedID, anchor: .center)
                     }
                 }
+                .background(
+                    ScrollViewAppearanceConfigurator()
+                )
             }
             .animation(.snappy(duration: 0.2), value: viewModel.searchText)
             .animation(.snappy(duration: 0.2), value: viewModel.selectedContentFilter)
             .animation(.snappy(duration: 0.2), value: viewModel.items.count)
 
-            Divider()
+            if showsFooter {
+                Divider()
 
-            HStack {
-                Button(role: .destructive) {
-                    showClearConfirmation = true
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .help("Clear history")
-                .disabled(!viewModel.hasNonPinnedItems)
-
-                Spacer()
-
-                HStack(spacing: 10) {
-                    SettingsLink {
-                        Image(systemName: "gearshape")
-                    }
-                    .help("Settings")
-
-                    Button {
-                        NSApp.terminate(nil)
+                HStack {
+                    Button(role: .destructive) {
+                        showClearConfirmation = true
                     } label: {
-                        Image(systemName: "power")
+                        Image(systemName: "trash")
                     }
-                    .buttonStyle(.plain)
-                    .help("Quit ClipVault")
+                    .help("Clear history")
+                    .disabled(!viewModel.hasNonPinnedItems)
+
+                    Spacer()
+
+                    HStack(spacing: 10) {
+                        SettingsLink {
+                            Image(systemName: "gearshape")
+                        }
+                        .help("Settings")
+
+                        Button {
+                            NSApp.terminate(nil)
+                        } label: {
+                            Image(systemName: "power")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Quit ClipVault")
+                    }
                 }
             }
         }
@@ -377,7 +383,25 @@ struct ClipboardListView: View {
     }
 }
 
+private struct ScrollViewAppearanceConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            guard let scrollView = nsView.enclosingScrollView else { return }
+            scrollView.scrollerStyle = .overlay
+            scrollView.hasVerticalScroller = true
+            scrollView.verticalScroller?.controlSize = .small
+            scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 2)
+            scrollView.drawsBackground = false
+            scrollView.backgroundColor = .clear
+        }
+    }
+}
+
 #Preview {
-    ClipboardListView(viewModel: ClipboardViewModel(), onItemSelected: {})
+    ClipboardListView(viewModel: ClipboardViewModel(), onItemSelected: {}, showsFooter: true)
         .frame(width: 350, height: 420)
 }

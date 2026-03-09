@@ -149,7 +149,7 @@ struct ClipboardItemRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RowHoverTracker(onHoverChanged: handleRowHoverChange)
         }
@@ -268,20 +268,28 @@ struct ClipboardItemRow: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(
-                    isImageSelected
-                    ? Color.accentColor.opacity(0.14)
-                    : (isKeyboardSelected
-                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.22)
-                       : (isActiveRowHover
-                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.16)
-                       : Color(nsColor: .controlBackgroundColor).opacity(0.68)))
-                )
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.ultraThinMaterial)
+
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.3))
+
+                if isImageSelected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.16))
+                } else if isKeyboardSelected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(nsColor: .selectedContentBackgroundColor).opacity(0.2))
+                } else if isActiveRowHover {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(nsColor: .selectedContentBackgroundColor).opacity(0.12))
+                }
+            }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 0.6)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.45), lineWidth: 0.7)
         )
         .overlay(alignment: .bottom) {
             if let imageContent {

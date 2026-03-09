@@ -3,6 +3,11 @@ import ApplicationServices
 import Carbon
 import SwiftUI
 
+private final class FloatingPickerPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 @MainActor
 final class AppEnvironment {
     static let shared = AppEnvironment()
@@ -14,12 +19,14 @@ final class AppEnvironment {
 }
 
 @MainActor
-final class MenuBarController: NSObject, NSPopoverDelegate {
+final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
     private let viewModel: ClipboardViewModel
     private let hotkeyManager: GlobalHotkeyManager
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
+    private let pickerContentSize = NSSize(width: 350, height: 440)
+    private var quickPickerPanel: FloatingPickerPanel?
     private var previousActiveApplication: NSRunningApplication?
     private var lastNonClipVaultApplication: NSRunningApplication?
     private var workspaceActivationObserver: NSObjectProtocol?
@@ -41,6 +48,10 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     @objc func togglePopover(_ sender: Any?) {
+        if let quickPickerPanel, quickPickerPanel.isVisible {
+            closeQuickPicker()
+        }
+
         if popover.isShown {
             popover.performClose(sender)
         } else {
@@ -50,6 +61,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     func showPopover(focusSearch: Bool) {
         guard let button = statusItem.button else { return }
+        closeQuickPicker()
         rememberPreviousActiveApplication()
         NSApp.activate(ignoringOtherApps: true)
 
@@ -66,6 +78,39 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
     }
 
+    private func toggleQuickPicker() {
+        if let quickPickerPanel, quickPickerPanel.isVisible {
+            closeQuickPicker()
+        } else {
+            showQuickPicker(focusSearch: true)
+        }
+    }
+
+    private func showQuickPicker(focusSearch: Bool) {
+        rememberPreviousActiveApplication()
+        popover.performClose(nil)
+
+        let panel = makeQuickPickerPanelIfNeeded()
+        positionQuickPicker(panel)
+
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        if focusSearch {
+            viewModel.requestSearchFocus()
+            DispatchQueue.main.async { [weak self] in
+                self?.viewModel.requestSearchFocus()
+            }
+        }
+    }
+
+    private func closeQuickPicker() {
+        guard let quickPickerPanel, quickPickerPanel.isVisible else { return }
+        quickPickerPanel.orderOut(nil)
+        viewModel.clearImageSelection()
+    }
+
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
         button.image = NSImage(systemSymbolName: "clipboard", accessibilityDescription: "ClipVault")
@@ -77,20 +122,91 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        popover.contentSize = NSSize(width: 350, height: 440)
+        popover.contentSize = pickerContentSize
         popover.contentViewController = NSHostingController(
             rootView: MenuBarView(
                 viewModel: viewModel,
                 onClosePopover: { [weak self] in
                     self?.handleItemSelection()
-                }
+                },
+                presentationStyle: .popover
             )
         )
     }
 
+    private func makeQuickPickerPanelIfNeeded() -> FloatingPickerPanel {
+        if let quickPickerPanel {
+            return quickPickerPanel
+        }
+
+        let panel = FloatingPickerPanel(
+            contentRect: NSRect(origin: .zero, size: pickerContentSize),
+            styleMask: [.borderless, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+
+        panel.level = .floating
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        panel.isMovableByWindowBackground = false
+        panel.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.98)
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.hidesOnDeactivate = true
+        panel.isReleasedWhenClosed = false
+        panel.ignoresMouseEvents = false
+        panel.delegate = self
+        panel.contentViewController = NSHostingController(
+            rootView: MenuBarView(
+                viewModel: viewModel,
+                onClosePopover: { [weak self] in
+                    self?.handleItemSelection()
+                },
+                presentationStyle: .quickPicker
+            )
+        )
+
+        panel.contentView?.wantsLayer = true
+        panel.contentView?.layer?.cornerRadius = 14
+        panel.contentView?.layer?.masksToBounds = true
+
+        quickPickerPanel = panel
+        return panel
+    }
+
+    private func positionQuickPicker(_ panel: NSPanel) {
+        panel.setFrame(calculateQuickPickerFrame(), display: false)
+    }
+
+    private func calculateQuickPickerFrame() -> NSRect {
+        let cursorLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(cursorLocation) }) ?? NSScreen.main
+        let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let inset: CGFloat = 8
+
+        let width = pickerContentSize.width
+        let height = pickerContentSize.height
+
+        let minX = visibleFrame.minX + inset
+        let maxX = visibleFrame.maxX - width - inset
+        let minY = visibleFrame.minY + inset
+        let maxY = visibleFrame.maxY - height - inset
+
+        var originX = cursorLocation.x - (width / 2)
+        originX = min(max(originX, minX), maxX)
+
+        var originY = cursorLocation.y - height - 12
+        if originY < minY {
+            originY = cursorLocation.y + 16
+        }
+        originY = min(max(originY, minY), maxY)
+
+        return NSRect(x: originX, y: originY, width: width, height: height)
+    }
+
     private func configureHotkey() {
         hotkeyManager.onHotKeyPressed = { [weak self] in
-            self?.showPopover(focusSearch: true)
+            self?.toggleQuickPicker()
         }
     }
 
@@ -132,11 +248,19 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     private func handleItemSelection() {
         popover.performClose(nil)
+        closeQuickPicker()
         pasteIntoPreviouslyActiveApp()
     }
 
     func popoverDidClose(_ notification: Notification) {
         viewModel.clearImageSelection()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        guard let panel = notification.object as? NSPanel, panel == quickPickerPanel else {
+            return
+        }
+        closeQuickPicker()
     }
 
     private func pasteIntoPreviouslyActiveApp() {
