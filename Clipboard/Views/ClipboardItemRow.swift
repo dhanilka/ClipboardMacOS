@@ -5,8 +5,12 @@ import UniformTypeIdentifiers
 
 struct ClipboardItemRow: View {
     let item: ClipboardItem
+    let isImageSelected: Bool
     let onPinTapped: () -> Void
+    let onImageSelectionToggle: () -> Void
+    let onClearImageSelection: () -> Void
     let onSaveEditedText: (String) -> Void
+    let onImageDragFileURLs: ((ClipboardItem) -> [URL])?
     let onSelected: () -> Void
 
     @State private var isHovered = false
@@ -82,6 +86,18 @@ struct ClipboardItemRow: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(item.isPinned ? .yellow : .secondary)
                         .help(item.isPinned ? "Unpin item" : "Pin item")
+
+                        if item.contentType == .image {
+                            Button {
+                                onImageSelectionToggle()
+                            } label: {
+                                Image(systemName: isImageSelected ? "checkmark.square.fill" : "square")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(isImageSelected ? Color.accentColor : Color.secondary)
+                            .help(isImageSelected ? "Deselect image" : "Select image")
+                        }
                     }
 
                     switch item.content {
@@ -109,14 +125,19 @@ struct ClipboardItemRow: View {
                             .clipped()
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                             .help("Drag image to drop it into another app")
-                            .onDrag {
-                                imageItemProvider(for: image)
-                            }
+                            .overlay(
+                                MultiFileDragHandle(
+                                    fileURLsProvider: { dragFileURLs(for: image) },
+                                    onClick: { handleRowTap() }
+                                )
+                            )
                     }
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture(perform: onSelected)
+            .onTapGesture {
+                handleRowTap()
+            }
 
         }
         .padding(.horizontal, 10)
@@ -167,9 +188,12 @@ struct ClipboardItemRow: View {
                         .scaledToFit()
                         .frame(width: 560, height: 360)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .onDrag {
-                            imageItemProvider(for: imageContent)
-                        }
+                        .overlay(
+                            MultiFileDragHandle(
+                                fileURLsProvider: { dragFileURLs(for: imageContent) },
+                                onClick: nil
+                            )
+                        )
 
                     Text(item.timestamp.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
@@ -242,7 +266,13 @@ struct ClipboardItemRow: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isHovered ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.28) : Color(nsColor: .controlBackgroundColor))
+                .fill(
+                    isImageSelected
+                    ? Color.accentColor.opacity(0.16)
+                    : (isHovered
+                       ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.28)
+                       : Color(nsColor: .controlBackgroundColor))
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -252,6 +282,35 @@ struct ClipboardItemRow: View {
 
     private var isAnyPreviewVisible: Bool {
         showsLargeTextPreview || showsLargeImagePreview
+    }
+
+    private var isCommandKeyDown: Bool {
+        NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
+    }
+
+    private func handleRowTap() {
+        if item.contentType == .image && isCommandKeyDown {
+            onImageSelectionToggle()
+        } else {
+            onClearImageSelection()
+            onSelected()
+        }
+    }
+
+    private func dragFileURLs(for image: NSImage) -> [URL] {
+        if let onImageDragFileURLs {
+            let urls = onImageDragFileURLs(item)
+            if !urls.isEmpty {
+                return urls
+            }
+        }
+
+        let imageTIFFData = image.tiffRepresentation
+        let imagePNGData = pngData(fromTIFFData: imageTIFFData)
+        if let url = createTemporaryImageFileURL(pngData: imagePNGData, tiffData: imageTIFFData) {
+            return [url]
+        }
+        return []
     }
 
     private func togglePreviewForHoveredItem() {
@@ -380,6 +439,100 @@ struct ClipboardItemRow: View {
         }
     }
 
+}
+
+private struct MultiFileDragHandle: NSViewRepresentable {
+    let fileURLsProvider: () -> [URL]
+    let onClick: (() -> Void)?
+
+    func makeNSView(context: Context) -> DragHandleView {
+        let view = DragHandleView()
+        view.fileURLsProvider = fileURLsProvider
+        view.onClick = onClick
+        return view
+    }
+
+    func updateNSView(_ nsView: DragHandleView, context: Context) {
+        nsView.fileURLsProvider = fileURLsProvider
+        nsView.onClick = onClick
+    }
+}
+
+private final class DragHandleView: NSView, NSDraggingSource {
+    var fileURLsProvider: (() -> [URL])?
+    var onClick: (() -> Void)?
+
+    private var hasStartedDrag = false
+    private var mouseDownPoint: NSPoint = .zero
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        hasStartedDrag = false
+        mouseDownPoint = convert(event.locationInWindow, from: nil)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let fileURLsProvider else { return }
+
+        let currentPoint = convert(event.locationInWindow, from: nil)
+        let deltaX = currentPoint.x - mouseDownPoint.x
+        let deltaY = currentPoint.y - mouseDownPoint.y
+        let distance = sqrt((deltaX * deltaX) + (deltaY * deltaY))
+        guard distance >= 3 else { return }
+
+        let urls = fileURLsProvider().filter { !$0.isFileURL ? false : FileManager.default.fileExists(atPath: $0.path) }
+        guard !urls.isEmpty else { return }
+
+        var draggingItems: [NSDraggingItem] = []
+        for (index, url) in urls.enumerated() {
+            let pasteboardItem = NSPasteboardItem()
+            pasteboardItem.setString(url.absoluteString, forType: .fileURL)
+
+            let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            let size = NSSize(width: 44, height: 44)
+            icon.size = size
+
+            let offset = CGFloat(index) * 5
+            let frame = NSRect(
+                x: currentPoint.x - (size.width / 2) - offset,
+                y: currentPoint.y - (size.height / 2) - offset,
+                width: size.width,
+                height: size.height
+            )
+            draggingItem.setDraggingFrame(frame, contents: icon)
+            draggingItems.append(draggingItem)
+        }
+
+        guard !draggingItems.isEmpty else { return }
+        hasStartedDrag = true
+        beginDraggingSession(with: draggingItems, event: event, source: self)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if !hasStartedDrag {
+            onClick?()
+        }
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .copy
+    }
+
+    func ignoreModifierKeys(for session: NSDraggingSession) -> Bool {
+        true
+    }
 }
 
 @MainActor
@@ -567,8 +720,12 @@ private struct SearchableEditableTextView: NSViewRepresentable {
 #Preview {
     ClipboardItemRow(
         item: .fromText("Example clipboard value\nwith second line")!,
+        isImageSelected: false,
         onPinTapped: {},
+        onImageSelectionToggle: {},
+        onClearImageSelection: {},
         onSaveEditedText: { _ in },
+        onImageDragFileURLs: nil,
         onSelected: {}
     )
         .padding()

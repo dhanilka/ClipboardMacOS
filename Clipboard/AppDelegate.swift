@@ -14,7 +14,7 @@ final class AppEnvironment {
 }
 
 @MainActor
-final class MenuBarController: NSObject {
+final class MenuBarController: NSObject, NSPopoverDelegate {
     private let viewModel: ClipboardViewModel
     private let hotkeyManager: GlobalHotkeyManager
 
@@ -67,6 +67,7 @@ final class MenuBarController: NSObject {
     private func configurePopover() {
         popover.behavior = .transient
         popover.animates = true
+        popover.delegate = self
         popover.contentSize = NSSize(width: 350, height: 440)
         popover.contentViewController = NSHostingController(
             rootView: MenuBarView(
@@ -94,6 +95,10 @@ final class MenuBarController: NSObject {
     private func handleItemSelection() {
         popover.performClose(nil)
         pasteIntoPreviouslyActiveApp()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        viewModel.clearImageSelection()
     }
 
     private func pasteIntoPreviouslyActiveApp() {

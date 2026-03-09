@@ -31,9 +31,15 @@ struct ClipboardListView: View {
                             ForEach(viewModel.filteredPinnedItems) { item in
                                 ClipboardItemRow(
                                     item: item,
+                                    isImageSelected: viewModel.isImageSelected(item),
                                     onPinTapped: { viewModel.togglePin(for: item) },
+                                    onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
+                                    onClearImageSelection: { viewModel.clearImageSelection() },
                                     onSaveEditedText: { editedText in
                                         viewModel.saveEditedText(for: item, updatedText: editedText)
+                                    },
+                                    onImageDragFileURLs: { draggedItem in
+                                        viewModel.imageDragFileURLs(for: draggedItem)
                                     },
                                     onSelected: {
                                         viewModel.copyItemToClipboard(item)
@@ -49,9 +55,15 @@ struct ClipboardListView: View {
                             ForEach(viewModel.filteredHistoryItems) { item in
                                 ClipboardItemRow(
                                     item: item,
+                                    isImageSelected: viewModel.isImageSelected(item),
                                     onPinTapped: { viewModel.togglePin(for: item) },
+                                    onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
+                                    onClearImageSelection: { viewModel.clearImageSelection() },
                                     onSaveEditedText: { editedText in
                                         viewModel.saveEditedText(for: item, updatedText: editedText)
+                                    },
+                                    onImageDragFileURLs: { draggedItem in
+                                        viewModel.imageDragFileURLs(for: draggedItem)
                                     },
                                     onSelected: {
                                         viewModel.copyItemToClipboard(item)
