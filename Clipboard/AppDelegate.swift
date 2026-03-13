@@ -66,6 +66,7 @@ final class AppEnvironment {
 final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
     private let viewModel: ClipboardViewModel
     private let hotkeyManager: GlobalHotkeyManager
+    private let dropShelfController: DropShelfController
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
@@ -76,9 +77,14 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
     private var workspaceActivationObserver: NSObjectProtocol?
     private var appDidResignActiveObserver: NSObjectProtocol?
 
-    init(viewModel: ClipboardViewModel, hotkeyManager: GlobalHotkeyManager) {
+    init(
+        viewModel: ClipboardViewModel,
+        hotkeyManager: GlobalHotkeyManager,
+        dropShelfController: DropShelfController
+    ) {
         self.viewModel = viewModel
         self.hotkeyManager = hotkeyManager
+        self.dropShelfController = dropShelfController
         super.init()
         configureWorkspaceObserver()
         configureAppLifecycleObserver()
@@ -266,8 +272,24 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
 
     private func configureHotkey() {
         hotkeyManager.onHotKeyPressed = { [weak self] in
-            self?.toggleQuickPicker()
+            guard let self else { return }
+            self.dropShelfController.revealFromHotkeyIfNeeded()
+            self.presentQuickPickerFromHotkey()
         }
+    }
+
+    private func presentQuickPickerFromHotkey() {
+        if let quickPickerPanel, quickPickerPanel.isVisible {
+            NSApp.activate(ignoringOtherApps: true)
+            quickPickerPanel.makeKeyAndOrderFront(nil)
+            viewModel.requestSearchFocus()
+            DispatchQueue.main.async { [weak self] in
+                self?.viewModel.requestSearchFocus()
+            }
+            return
+        }
+
+        showQuickPicker(focusSearch: true)
     }
 
     private func configureWorkspaceObserver() {
@@ -423,12 +445,16 @@ final class MenuBarController: NSObject, NSPopoverDelegate, NSWindowDelegate {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
+    private var dropShelfController: DropShelfController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let environment = AppEnvironment.shared
+        let dropShelfController = DropShelfController()
+        self.dropShelfController = dropShelfController
         menuBarController = MenuBarController(
             viewModel: environment.clipboardViewModel,
-            hotkeyManager: environment.hotkeyManager
+            hotkeyManager: environment.hotkeyManager,
+            dropShelfController: dropShelfController
         )
     }
 }
