@@ -8,6 +8,7 @@ struct ClipboardItemRow: View {
     let isImageSelected: Bool
     let isKeyboardSelected: Bool
     let onCopyTapped: () -> Void
+    let onDeleteTapped: () -> Void
     let onPinTapped: () -> Void
     let onExtractTextTapped: () -> Void
     let onImageSelectionToggle: () -> Void
@@ -328,6 +329,27 @@ struct ClipboardItemRow: View {
                     )
                     .frame(width: proxy.size.width, height: proxy.size.height)
                 }
+            }
+        }
+        .contextMenu {
+            Button {
+                onClearImageSelection()
+                onCopyTapped()
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                onPinTapped()
+            } label: {
+                Label(item.isPinned ? "Unpin" : "Pin", systemImage: item.isPinned ? "pin.slash" : "pin")
+            }
+
+            Button(role: .destructive) {
+                onClearImageSelection()
+                onDeleteTapped()
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
         }
     }
@@ -1040,6 +1062,7 @@ private struct SearchableEditableTextView: NSViewRepresentable {
         isImageSelected: false,
         isKeyboardSelected: false,
         onCopyTapped: {},
+        onDeleteTapped: {},
         onPinTapped: {},
         onExtractTextTapped: {},
         onImageSelectionToggle: {},

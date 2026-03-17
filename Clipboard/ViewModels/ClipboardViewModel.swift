@@ -148,6 +148,10 @@ final class ClipboardViewModel: ObservableObject {
         items[index].isPinned.toggle()
     }
 
+    func deleteItem(_ item: ClipboardItem) {
+        items.removeAll { $0.id == item.id }
+    }
+
     func copyItemToClipboard(_ item: ClipboardItem) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

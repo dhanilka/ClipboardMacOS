@@ -96,6 +96,7 @@ struct ClipboardListView: View {
                                         isImageSelected: viewModel.isImageSelected(item),
                                         isKeyboardSelected: keyboardSelectedItemID == item.id,
                                         onCopyTapped: { handleCopyButtonTap(for: item) },
+                                        onDeleteTapped: { viewModel.deleteItem(item) },
                                         onPinTapped: { viewModel.togglePin(for: item) },
                                         onExtractTextTapped: { startOCR(for: item) },
                                         onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
@@ -126,6 +127,7 @@ struct ClipboardListView: View {
                                             isImageSelected: viewModel.isImageSelected(item),
                                             isKeyboardSelected: keyboardSelectedItemID == item.id,
                                             onCopyTapped: { handleCopyButtonTap(for: item) },
+                                            onDeleteTapped: { viewModel.deleteItem(item) },
                                             onPinTapped: { viewModel.togglePin(for: item) },
                                             onExtractTextTapped: { startOCR(for: item) },
                                             onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
@@ -564,20 +566,54 @@ struct ClipboardListView: View {
 }
 
 private struct ScrollViewAppearanceConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        NSView(frame: .zero)
+    func makeNSView(context: Context) -> ScrollViewAppearanceView {
+        ScrollViewAppearanceView(frame: .zero)
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            guard let scrollView = nsView.enclosingScrollView else { return }
-            scrollView.scrollerStyle = .overlay
-            scrollView.hasVerticalScroller = true
-            scrollView.verticalScroller?.controlSize = .small
-            scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 2)
-            scrollView.drawsBackground = false
-            scrollView.backgroundColor = .clear
+    func updateNSView(_ nsView: ScrollViewAppearanceView, context: Context) {
+        nsView.applyAppearanceIfNeeded()
+    }
+}
+
+private final class ScrollViewAppearanceView: NSView {
+    private weak var appliedScrollView: NSScrollView?
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        applyAppearanceIfNeeded()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyAppearanceIfNeeded()
+    }
+
+    func applyAppearanceIfNeeded() {
+        guard let scrollView = enclosingScrollView else { return }
+
+        let desiredInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 2)
+        let hasExpectedInsets =
+            scrollView.scrollerInsets.top == desiredInsets.top &&
+            scrollView.scrollerInsets.left == desiredInsets.left &&
+            scrollView.scrollerInsets.bottom == desiredInsets.bottom &&
+            scrollView.scrollerInsets.right == desiredInsets.right
+        if appliedScrollView === scrollView,
+           scrollView.scrollerStyle == .overlay,
+           scrollView.hasVerticalScroller,
+           scrollView.verticalScroller?.controlSize == .small,
+           hasExpectedInsets,
+           !scrollView.drawsBackground,
+           scrollView.backgroundColor == .clear {
+            return
         }
+
+        scrollView.scrollerStyle = .overlay
+        scrollView.hasVerticalScroller = true
+        scrollView.verticalScroller?.controlSize = .small
+        scrollView.scrollerInsets = desiredInsets
+        scrollView.drawsBackground = false
+        scrollView.backgroundColor = .clear
+        appliedScrollView = scrollView
     }
 }
 
