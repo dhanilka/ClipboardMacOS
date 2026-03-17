@@ -40,10 +40,6 @@ struct ClipboardItemRow: View {
         }
     }
 
-    private var contentTypeLabel: String {
-        item.contentType.rawValue.uppercased()
-    }
-
     private var copiedTimeLabel: String {
         let seconds = Date().timeIntervalSince(item.timestamp)
 
@@ -91,10 +87,6 @@ struct ClipboardItemRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(contentTypeLabel)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
                         Text(copiedTimeLabel)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
