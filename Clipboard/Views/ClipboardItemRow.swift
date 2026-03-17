@@ -23,6 +23,7 @@ struct ClipboardItemRow: View {
     @State private var previewTransitionDismissTask: DispatchWorkItem?
     @State private var previewTransitionWorkItem: DispatchWorkItem?
     @State private var previewSearchText: String = ""
+    @State private var isPreviewSearchVisible = false
     @State private var previewEditableText: String = ""
     @ObservedObject private var shiftKeyMonitor = ShiftKeyMonitor.shared
     @ObservedObject private var rowHoverCoordinator = RowHoverCoordinator.shared
@@ -63,13 +64,6 @@ struct ClipboardItemRow: View {
     private var textPreviewContent: String? {
         guard case .text(let text) = item.content else { return nil }
         return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
-    }
-
-    private var hasUnsavedTextChanges: Bool {
-        guard let originalText = textPreviewContent else {
-            return false
-        }
-        return previewEditableText != originalText
     }
 
     private var imageContent: NSImage? {
@@ -271,45 +265,22 @@ struct ClipboardItemRow: View {
                             .foregroundStyle(.primary)
 
                         Spacer()
-
-                        if hasUnsavedTextChanges {
-                            Button {
-                                onSaveEditedText(previewEditableText)
-                            } label: {
-                                Image(systemName: "square.and.arrow.down")
-                            }
-                            .help("Save changes")
-                        }
                     }
 
-                    TextField("Search in preview", text: $previewSearchText)
-                        .textFieldStyle(.roundedBorder)
-
-                    SearchableEditableTextView(
-                        text: $previewEditableText,
-                        searchQuery: previewSearchText
-                    )
+                    ScrollView {
+                        Text(textPreviewContent)
+                            .font(.system(.body, design: .default))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                    }
                     .frame(width: 520, height: 300)
-                    .padding(10)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color(nsColor: .textBackgroundColor))
                     )
-                    .onAppear {
-                        previewEditableText = textPreviewContent
-                    }
 
-                    if !previewSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                       previewEditableText.range(
-                           of: previewSearchText,
-                           options: [.caseInsensitive, .diacriticInsensitive]
-                       ) == nil {
-                        Text("No matches found")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Text("You can edit, select multiple lines, and copy from here.")
+                    Text("Use row copy button to copy this item.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -443,6 +414,7 @@ struct ClipboardItemRow: View {
         queuePreviewTransition {
             if textPreviewContent != nil {
                 previewSearchText = ""
+                isPreviewSearchVisible = false
                 previewEditableText = textPreviewContent ?? ""
                 showsLargeTextPreview = true
             }
@@ -461,6 +433,7 @@ struct ClipboardItemRow: View {
             showsLargeImagePreview = false
             isPreviewPopoverHovered = false
             previewSearchText = ""
+            isPreviewSearchVisible = false
             previewEditableText = ""
         }
     }
@@ -470,30 +443,20 @@ struct ClipboardItemRow: View {
         if hovering {
             previewTransitionDismissTask?.cancel()
             previewTransitionDismissTask = nil
-            rowHoverCoordinator.setHovered(item.id)
         }
         if !hovering && !isHovered {
-            rowHoverCoordinator.clearIfCurrent(item.id)
             cancelHoverPreview()
         }
     }
 
     private func queuePreviewTransition(_ transition: @escaping () -> Void) {
         previewTransitionWorkItem?.cancel()
-        clearWindowFirstResponder()
 
         let work = DispatchWorkItem {
             transition()
         }
         previewTransitionWorkItem = work
         DispatchQueue.main.async(execute: work)
-    }
-
-    private func clearWindowFirstResponder() {
-        NSApp.keyWindow?.makeFirstResponder(nil)
-        if NSApp.mainWindow !== NSApp.keyWindow {
-            NSApp.mainWindow?.makeFirstResponder(nil)
-        }
     }
 
     private func imageItemProvider(for image: NSImage) -> NSItemProvider {
