@@ -44,6 +44,26 @@ struct ClipboardItemRow: View {
         item.contentType.rawValue.uppercased()
     }
 
+    private var copiedTimeLabel: String {
+        let seconds = Date().timeIntervalSince(item.timestamp)
+
+        if seconds < 60 {
+            return "Just now"
+        }
+
+        if seconds < 3600 {
+            let minutes = max(1, Int(seconds / 60))
+            return "\(minutes) min ago"
+        }
+
+        if seconds < 3 * 3600 {
+            let hours = max(1, Int(seconds / 3600))
+            return "\(hours) hr ago"
+        }
+
+        return item.timestamp.formatted(date: .omitted, time: .shortened)
+    }
+
     private var textPreviewContent: String? {
         guard case .text(let text) = item.content else { return nil }
         return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
@@ -75,7 +95,7 @@ struct ClipboardItemRow: View {
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
 
-                        Text(item.timestamp.formatted(date: .omitted, time: .shortened))
+                        Text(copiedTimeLabel)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
 

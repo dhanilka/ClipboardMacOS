@@ -3,6 +3,13 @@ import Combine
 import AppKit
 import Carbon
 
+private struct HistoryDaySection: Identifiable {
+    let day: Date
+    var items: [ClipboardItem]
+
+    var id: Date { day }
+}
+
 struct ClipboardListView: View {
     @ObservedObject var viewModel: ClipboardViewModel
     let onItemSelected: () -> Void
@@ -110,31 +117,33 @@ struct ClipboardListView: View {
                             }
 
                             if !viewModel.filteredHistoryItems.isEmpty {
-                                sectionHeader("Recent")
+                                ForEach(historyDaySections) { section in
+                                    sectionHeader(historySectionTitle(for: section.day))
 
-                                ForEach(viewModel.filteredHistoryItems) { item in
-                                    ClipboardItemRow(
-                                        item: item,
-                                        isImageSelected: viewModel.isImageSelected(item),
-                                        isKeyboardSelected: keyboardSelectedItemID == item.id,
-                                        onCopyTapped: { handleCopyButtonTap(for: item) },
-                                        onPinTapped: { viewModel.togglePin(for: item) },
-                                        onExtractTextTapped: { startOCR(for: item) },
-                                        onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
-                                        onClearImageSelection: { viewModel.clearImageSelection() },
-                                        onSaveEditedText: { editedText in
-                                            viewModel.saveEditedText(for: item, updatedText: editedText)
-                                        },
-                                        onImageDragFileURLs: { draggedItem in
-                                            viewModel.imageDragFileURLs(for: draggedItem)
-                                        },
-                                        onSelected: {
-                                            viewModel.clearImageSelection()
-                                            viewModel.copyItemToClipboard(item)
-                                            onItemSelected()
-                                        }
-                                    )
-                                    .id(item.id)
+                                    ForEach(section.items) { item in
+                                        ClipboardItemRow(
+                                            item: item,
+                                            isImageSelected: viewModel.isImageSelected(item),
+                                            isKeyboardSelected: keyboardSelectedItemID == item.id,
+                                            onCopyTapped: { handleCopyButtonTap(for: item) },
+                                            onPinTapped: { viewModel.togglePin(for: item) },
+                                            onExtractTextTapped: { startOCR(for: item) },
+                                            onImageSelectionToggle: { viewModel.toggleImageSelection(for: item) },
+                                            onClearImageSelection: { viewModel.clearImageSelection() },
+                                            onSaveEditedText: { editedText in
+                                                viewModel.saveEditedText(for: item, updatedText: editedText)
+                                            },
+                                            onImageDragFileURLs: { draggedItem in
+                                                viewModel.imageDragFileURLs(for: draggedItem)
+                                            },
+                                            onSelected: {
+                                                viewModel.clearImageSelection()
+                                                viewModel.copyItemToClipboard(item)
+                                                onItemSelected()
+                                            }
+                                        )
+                                        .id(item.id)
+                                    }
                                 }
                             }
                         }
@@ -263,6 +272,22 @@ struct ClipboardListView: View {
 
     private var orderedVisibleItems: [ClipboardItem] {
         viewModel.filteredPinnedItems + viewModel.filteredHistoryItems
+    }
+
+    private var historyDaySections: [HistoryDaySection] {
+        let calendar = Calendar.current
+        var sections: [HistoryDaySection] = []
+
+        for item in viewModel.filteredHistoryItems {
+            let day = calendar.startOfDay(for: item.timestamp)
+            if let index = sections.firstIndex(where: { calendar.isDate($0.day, inSameDayAs: day) }) {
+                sections[index].items.append(item)
+            } else {
+                sections.append(HistoryDaySection(day: day, items: [item]))
+            }
+        }
+
+        return sections
     }
 
     private func toggleSearchBar() {
@@ -524,6 +549,17 @@ struct ClipboardListView: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.top, 2)
+    }
+
+    private func historySectionTitle(for day: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) {
+            return "Today"
+        }
+        if calendar.isDateInYesterday(day) {
+            return "Yesterday"
+        }
+        return day.formatted(.dateTime.day().month(.abbreviated).year())
     }
 }
 
