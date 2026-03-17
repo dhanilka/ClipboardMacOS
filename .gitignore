@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Xcode user/state
+*.xcuserstate
+*.xcscmblueprint
+**/xcuserdata/
+
+# Xcode build products
+build/
+DerivedData/
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# Archives and logs
+*.xcarchive
+*.xcresult
+*.log
+
+# App packaging artifacts
+dist/
+*.dmg
+

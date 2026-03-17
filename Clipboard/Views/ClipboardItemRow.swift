@@ -21,11 +21,13 @@ struct ClipboardItemRow: View {
     @State private var showsLargeTextPreview = false
     @State private var isPreviewPopoverHovered = false
     @State private var previewTransitionDismissTask: DispatchWorkItem?
+    @State private var previewTransitionWorkItem: DispatchWorkItem?
     @State private var previewSearchText: String = ""
     @State private var previewEditableText: String = ""
     @ObservedObject private var shiftKeyMonitor = ShiftKeyMonitor.shared
     @ObservedObject private var rowHoverCoordinator = RowHoverCoordinator.shared
     @State private var lastObservedShiftState = false
+    @State private var handledCurrentShiftPress = false
 
     private var iconName: String {
         switch item.contentType {
@@ -174,9 +176,18 @@ struct ClipboardItemRow: View {
             let wasPressed = lastObservedShiftState
             lastObservedShiftState = isPressed
 
+            if !isPressed {
+                handledCurrentShiftPress = false
+                return
+            }
+
             guard isActiveRowHover else { return }
-            if isPressed && !wasPressed {
-                togglePreviewForHoveredItem()
+            guard isPressed && !wasPressed else { return }
+            guard !handledCurrentShiftPress else { return }
+
+            handledCurrentShiftPress = true
+            DispatchQueue.main.async {
+                self.togglePreviewForHoveredItem()
             }
         }
         .onReceive(rowHoverCoordinator.$hoveredItemID.dropFirst()) { hoveredItemID in
@@ -190,6 +201,8 @@ struct ClipboardItemRow: View {
             isHovered = false
             rowHoverCoordinator.clearIfCurrent(item.id)
             cancelHoverPreview()
+            previewTransitionWorkItem?.cancel()
+            previewTransitionWorkItem = nil
         }
         .popover(isPresented: $showsLargeImagePreview, arrowEdge: .trailing) {
             if let imageContent {
@@ -366,9 +379,6 @@ struct ClipboardItemRow: View {
             previewTransitionDismissTask?.cancel()
             previewTransitionDismissTask = nil
             rowHoverCoordinator.setHovered(item.id)
-            if shiftKeyMonitor.isShiftPressed && !isAnyPreviewVisible {
-                showPreviewForHoveredItem()
-            }
         } else {
             if !isAnyPreviewVisible {
                 rowHoverCoordinator.clearIfCurrent(item.id)
@@ -418,26 +428,29 @@ struct ClipboardItemRow: View {
         previewTransitionDismissTask?.cancel()
         previewTransitionDismissTask = nil
         isPreviewPopoverHovered = false
+        queuePreviewTransition {
+            if textPreviewContent != nil {
+                previewSearchText = ""
+                previewEditableText = textPreviewContent ?? ""
+                showsLargeTextPreview = true
+            }
 
-        if textPreviewContent != nil {
-            previewSearchText = ""
-            previewEditableText = textPreviewContent ?? ""
-            showsLargeTextPreview = true
-        }
-
-        if imageContent != nil {
-            showsLargeImagePreview = true
+            if imageContent != nil {
+                showsLargeImagePreview = true
+            }
         }
     }
 
     private func cancelHoverPreview() {
         previewTransitionDismissTask?.cancel()
         previewTransitionDismissTask = nil
-        showsLargeTextPreview = false
-        showsLargeImagePreview = false
-        isPreviewPopoverHovered = false
-        previewSearchText = ""
-        previewEditableText = ""
+        queuePreviewTransition {
+            showsLargeTextPreview = false
+            showsLargeImagePreview = false
+            isPreviewPopoverHovered = false
+            previewSearchText = ""
+            previewEditableText = ""
+        }
     }
 
     private func handlePreviewPopoverHoverChange(_ hovering: Bool) {
@@ -450,6 +463,24 @@ struct ClipboardItemRow: View {
         if !hovering && !isHovered {
             rowHoverCoordinator.clearIfCurrent(item.id)
             cancelHoverPreview()
+        }
+    }
+
+    private func queuePreviewTransition(_ transition: @escaping () -> Void) {
+        previewTransitionWorkItem?.cancel()
+        clearWindowFirstResponder()
+
+        let work = DispatchWorkItem {
+            transition()
+        }
+        previewTransitionWorkItem = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    private func clearWindowFirstResponder() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        if NSApp.mainWindow !== NSApp.keyWindow {
+            NSApp.mainWindow?.makeFirstResponder(nil)
         }
     }
 
